@@ -878,6 +878,52 @@
         .card-number { font-size: 0.7rem; font-weight: 700; color: var(--gray-400); text-align: right; }
 
         /* ============================================
+           FAVORITE / IGNORE
+           ============================================ */
+        .card-actions {
+            display: flex; flex-direction: column; align-items: flex-end;
+            gap: 0.4rem; flex-shrink: 0;
+        }
+        .fav-btn, .ignore-btn {
+            background: none; border: 1.5px solid var(--gray-200);
+            border-radius: 8px; cursor: pointer;
+            font-size: 1rem; line-height: 1;
+            padding: 0.3rem 0.5rem;
+            transition: all 0.15s;
+            display: flex; align-items: center; gap: 0.25rem;
+        }
+        .fav-btn:hover { border-color: #f59e0b; background: #fffbeb; }
+        .fav-btn.active { border-color: #f59e0b; background: #fef3c7; }
+        .ignore-btn:hover { border-color: var(--danger); background: #fee2e2; }
+        .ignore-btn.active { border-color: var(--danger); background: #fee2e2; }
+
+        .job-card.favorited { border-left: 4px solid #f59e0b !important; }
+        .job-card.ignored-card { opacity: 0.45; filter: grayscale(0.4); }
+
+        /* View mode filter bar */
+        .view-mode-bar {
+            display: flex; align-items: center; gap: 0.5rem;
+            flex-wrap: wrap; margin-top: 0.5rem;
+        }
+        .view-mode-label { font-size: 0.72rem; font-weight: 600; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.05em; }
+        .view-mode-btn {
+            padding: 0.3rem 0.75rem; border-radius: 99px;
+            border: 1.5px solid var(--gray-200); background: white;
+            font-size: 0.75rem; font-weight: 600; color: var(--gray-500);
+            cursor: pointer; transition: all 0.15s;
+        }
+        .view-mode-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .view-mode-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
+        .view-mode-btn.fav-mode.active { background: #f59e0b; border-color: #f59e0b; color: white; }
+        .view-mode-btn.ign-mode.active { background: var(--danger); border-color: var(--danger); color: white; }
+
+        body.dark .fav-btn, body.dark .ignore-btn { border-color: #334155; }
+        body.dark .fav-btn:hover { background: #422006; border-color: #f59e0b; }
+        body.dark .fav-btn.active { background: #422006; border-color: #f59e0b; }
+        body.dark .ignore-btn:hover { background: #450a0a; border-color: var(--danger); }
+        body.dark .view-mode-btn { background: #1e293b; border-color: #334155; color: #94a3b8; }
+
+        /* ============================================
            BOARD TABS PANEL
            ============================================ */
         #boardTabsPanel {
@@ -1286,6 +1332,12 @@
                 <button class="tag-filter-clear" id="clearTagsBtn" onclick="clearAllTags()" style="display:none">Clear filters</button>
             </div>
             <div class="tag-chips-row" id="tagChips"></div>
+            <div class="view-mode-bar" style="margin-top:0.6rem">
+                <span class="view-mode-label">View:</span>
+                <button class="view-mode-btn active" data-view="all">All</button>
+                <button class="view-mode-btn fav-mode" data-view="favorites">❤️ Favorites</button>
+                <button class="view-mode-btn ign-mode" data-view="ignored">🚫 Ignored</button>
+            </div>
         </div>
 
         <!-- New jobs banner -->
@@ -1475,13 +1527,28 @@
         });
     }
 
-    // Event delegation for job link clicks
+    // Event delegation for job link clicks + fav/ignore buttons
     document.getElementById('jobsContainer').addEventListener('click', function(e) {
         const link = e.target.closest('a.track-link');
-        if (!link) return;
-        const jobIdx = parseInt(link.dataset.jobIdx);
-        const linkIdx = parseInt(link.dataset.linkIdx);
-        trackClick(jobIdx, linkIdx);
+        if (link) {
+            const jobIdx = parseInt(link.dataset.jobIdx);
+            const linkIdx = parseInt(link.dataset.linkIdx);
+            trackClick(jobIdx, linkIdx);
+            return;
+        }
+        const favBtn = e.target.closest('.fav-btn');
+        if (favBtn) { toggleFavorite(favBtn.dataset.jobKey); return; }
+        const ignBtn = e.target.closest('.ignore-btn');
+        if (ignBtn) { toggleIgnore(ignBtn.dataset.jobKey); return; }
+    });
+
+    // View mode buttons
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.view-mode-btn');
+        if (!btn) return;
+        viewMode = btn.dataset.view;
+        document.querySelectorAll('.view-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+        filterJobs();
     });
 
     // Init history on load
@@ -1492,6 +1559,72 @@
     // ============================================================
     let activeTags = new Set();
     let allJobs = [];
+    let viewMode = 'all'; // 'all' | 'favorites' | 'ignored'
+
+    // ============================================================
+    // FAVORITES & IGNORE — localStorage persistence
+    // ============================================================
+    const FAV_KEY = 'mke_favorites';
+    const IGN_KEY = 'mke_ignored';
+
+    function getFavorites() {
+        try { return new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]')); } catch { return new Set(); }
+    }
+    function saveFavorites(set) {
+        localStorage.setItem(FAV_KEY, JSON.stringify([...set]));
+    }
+    function getIgnored() {
+        try { return new Set(JSON.parse(localStorage.getItem(IGN_KEY) || '[]')); } catch { return new Set(); }
+    }
+    function saveIgnored(set) {
+        localStorage.setItem(IGN_KEY, JSON.stringify([...set]));
+    }
+    function isFavorite(key) { return getFavorites().has(key); }
+    function isIgnoredJob(key) { return getIgnored().has(key); }
+
+    function toggleFavorite(jobKey) {
+        const favs = getFavorites();
+        if (favs.has(jobKey)) { favs.delete(jobKey); } else { favs.add(jobKey); }
+        saveFavorites(favs);
+        // Update card UI
+        const wrap = document.querySelector(`.job-card-wrap[data-job-key="${CSS.escape(jobKey)}"]`);
+        if (wrap) {
+            const card = wrap.querySelector('.job-card');
+            const btn = wrap.querySelector('.fav-btn');
+            const active = favs.has(jobKey);
+            card.classList.toggle('favorited', active);
+            btn.classList.toggle('active', active);
+            btn.textContent = active ? '❤️' : '🤍';
+            btn.title = active ? 'Remove from favorites' : 'Save as favorite';
+        }
+        if (viewMode !== 'all') filterJobs();
+    }
+
+    function toggleIgnore(jobKey) {
+        const ignored = getIgnored();
+        const favs = getFavorites();
+        if (ignored.has(jobKey)) {
+            ignored.delete(jobKey);
+        } else {
+            ignored.add(jobKey);
+            favs.delete(jobKey); // can't be both ignored and favorited
+            saveFavorites(favs);
+        }
+        saveIgnored(ignored);
+        // Update card UI
+        const wrap = document.querySelector(`.job-card-wrap[data-job-key="${CSS.escape(jobKey)}"]`);
+        if (wrap) {
+            const card = wrap.querySelector('.job-card');
+            const ignBtn = wrap.querySelector('.ignore-btn');
+            const favBtn = wrap.querySelector('.fav-btn');
+            const active = ignored.has(jobKey);
+            card.classList.toggle('ignored-card', active);
+            card.classList.remove('favorited');
+            ignBtn.classList.toggle('active', active);
+            if (favBtn) { favBtn.classList.remove('active'); favBtn.textContent = '🤍'; }
+        }
+        filterJobs();
+    }
 
     function renderTagFilter(jobs) {
         const tagCounts = {};
@@ -1542,20 +1675,27 @@
 
     function filterJobs() {
         const wraps = document.querySelectorAll('.job-card-wrap');
+        const favs = getFavorites();
+        const ignored = getIgnored();
         let visible = 0;
         wraps.forEach((el, i) => {
             if (i >= allJobs.length) return;
-            const show = activeTags.size === 0 ||
+            const jobKey = makeJobKey(allJobs[i]);
+            const isFav = favs.has(jobKey);
+            const isIgn = ignored.has(jobKey);
+            const tagMatch = activeTags.size === 0 ||
                 [...activeTags].some(t => (allJobs[i].job_tags || []).includes(t));
+            let show = false;
+            if (viewMode === 'favorites') show = isFav && tagMatch;
+            else if (viewMode === 'ignored') show = isIgn;
+            else show = !isIgn && tagMatch; // 'all': hide ignored
             el.style.display = show ? '' : 'none';
             if (show) visible++;
         });
-        // Update count
         const countEl = document.getElementById('resultsCount');
-        if (countEl && activeTags.size > 0) {
-            countEl.textContent = `${visible} of ${allJobs.length} jobs shown`;
-        } else if (countEl) {
-            countEl.textContent = `${allJobs.length} AI-matched job${allJobs.length !== 1 ? 's' : ''}`;
+        if (countEl) {
+            const label = viewMode === 'favorites' ? '❤️ favorites' : viewMode === 'ignored' ? '🚫 ignored' : `AI-matched job${visible !== 1 ? 's' : ''}`;
+            countEl.textContent = `${visible} ${label}`;
         }
     }
 
@@ -1668,6 +1808,8 @@
         const jobKey = makeJobKey(job);
         const viewed = isJobViewed(jobKey);
         const isNew = newJobKeys.has(jobKey);
+        const isFav = isFavorite(jobKey);
+        const isIgnored = isIgnoredJob(jobKey);
 
         // Company logo — try Google favicon (sz=64 is most reliably served),
         // fall back to DuckDuckGo icon service, then remove if both fail.
@@ -1725,8 +1867,8 @@
         ).join('');
 
         return `
-        <div class="job-card-wrap animate-in" style="animation-delay: ${index * 0.06}s">
-            <div class="job-card">
+        <div class="job-card-wrap animate-in" style="animation-delay: ${index * 0.06}s" data-job-key="${escapeHtml(jobKey)}">
+            <div class="job-card${isFav ? ' favorited' : ''}${isIgnored ? ' ignored-card' : ''}">
                 ${viewedBadge}
                 ${newBadge}
                 <div class="job-card-header">
@@ -1744,13 +1886,15 @@
                         ${applicantHtml}
                         ${tagBadges ? `<div class="job-tag-row">${tagBadges}</div>` : ''}
                     </div>
-                    <div class="match-score-wrap">
+                    <div class="card-actions">
                         ${job.match_score != null ? (() => {
                             const s = job.match_score;
                             const cls = s >= 75 ? '' : s >= 50 ? ' mid' : ' low';
                             return `<span class="match-score-badge${cls}">${s}% match</span>`;
                         })() : ''}
                         <div class="card-number">#${index + 1}</div>
+                        <button class="fav-btn${isFav ? ' active' : ''}" data-action="fav" data-job-key="${escapeHtml(jobKey)}" title="${isFav ? 'Remove from favorites' : 'Save as favorite'}">${isFav ? '❤️' : '🤍'}</button>
+                        <button class="ignore-btn${isIgnored ? ' active' : ''}" data-action="ignore" data-job-key="${escapeHtml(jobKey)}" title="${isIgnored ? 'Restore job' : 'Ignore this job'}">🚫</button>
                     </div>
                 </div>
                 <div class="job-card-body">
