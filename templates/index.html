@@ -924,7 +924,7 @@
         body.dark .view-mode-btn { background: #1e293b; border-color: #334155; color: #94a3b8; }
 
         /* ============================================
-           BOARD TABS PANEL
+           BOARD TABS PANEL + REAL JOB CARDS
            ============================================ */
         #boardTabsPanel {
             background: white;
@@ -961,39 +961,86 @@
             background: white; color: var(--primary);
             border-color: var(--gray-200); border-bottom-color: white;
         }
-        .board-tab-contents { padding: 1rem 1.5rem 1.25rem; }
+        .board-count-badge {
+            display: inline-block; background: var(--gray-200); color: var(--gray-600);
+            font-size: 0.65rem; font-weight: 700; border-radius: 99px;
+            padding: 0.05rem 0.45rem; margin-left: 0.3rem;
+        }
+        .board-tab-btn.active .board-count-badge { background: var(--primary-light); color: var(--primary); }
+
+        .board-tab-contents { padding: 0.75rem 1.5rem 1.25rem; }
         .board-tab-content { display: none; }
         .board-tab-content.active { display: block; }
-        .board-job-row {
-            display: flex; align-items: center;
-            justify-content: space-between; gap: 1rem;
-            padding: 0.6rem 0;
+
+        /* Real job cards inside board tabs */
+        .real-job-card {
+            display: flex; align-items: flex-start; gap: 1rem;
+            padding: 0.9rem 0;
             border-bottom: 1px solid var(--gray-100);
+            transition: background 0.1s;
         }
-        .board-job-row:last-child { border-bottom: none; }
-        .board-job-info { display: flex; align-items: center; gap: 0.6rem; flex: 1; min-width: 0; }
-        .board-job-num { font-size: 0.68rem; font-weight: 700; color: var(--gray-400); min-width: 1.4rem; }
-        .board-job-title { font-size: 0.85rem; font-weight: 600; color: var(--gray-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .board-job-score { font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 99px; white-space: nowrap; flex-shrink: 0; }
-        .board-job-score.hi { background: #dcfce7; color: #15803d; }
-        .board-job-score.mid { background: #fef9c3; color: #854d0e; }
-        .board-job-score.lo { background: #fee2e2; color: #991b1b; }
-        .board-search-btn {
+        .real-job-card:last-child { border-bottom: none; }
+        .real-job-card.favorited { border-left: 3px solid #f59e0b; padding-left: 0.75rem; }
+        .real-job-card.ignored-card { opacity: 0.4; }
+
+        .real-job-score-col { flex-shrink: 0; padding-top: 0.1rem; }
+        .real-score-badge {
+            font-size: 0.72rem; font-weight: 800; padding: 0.25rem 0.55rem;
+            border-radius: 99px; white-space: nowrap;
+        }
+        .real-score-badge.hi { background: #dcfce7; color: #15803d; }
+        .real-score-badge.mid { background: #fef9c3; color: #854d0e; }
+        .real-score-badge.lo { background: #fee2e2; color: #991b1b; }
+
+        .real-job-body { flex: 1; min-width: 0; }
+        .real-job-title-row { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+        .real-job-title { font-size: 0.92rem; font-weight: 700; color: var(--gray-800); }
+        .real-job-company { font-size: 0.8rem; color: var(--gray-600); margin-top: 0.1rem; }
+        .real-job-meta {
+            display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem;
+            margin-top: 0.35rem; font-size: 0.75rem; color: var(--gray-500);
+        }
+        .real-job-meta span { display: inline-flex; align-items: center; gap: 0.2rem; }
+        .real-job-type-badge {
+            font-size: 0.67rem; font-weight: 700; padding: 0.1rem 0.4rem;
+            border-radius: 4px; background: #e0e7ff; color: #3730a3;
+            text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        .real-job-reasons {
+            margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.3rem;
+        }
+        .real-reason-chip {
+            font-size: 0.72rem; color: var(--gray-600);
+            background: var(--gray-50); border: 1px solid var(--gray-100);
+            border-radius: 5px; padding: 0.15rem 0.5rem;
+        }
+
+        .real-job-actions {
+            display: flex; flex-direction: column; align-items: flex-end;
+            gap: 0.4rem; flex-shrink: 0;
+        }
+        .real-apply-btn {
             display: inline-flex; align-items: center; gap: 0.3rem;
-            padding: 0.35rem 0.8rem; border-radius: 7px;
-            font-size: 0.75rem; font-weight: 600;
-            text-decoration: none; transition: all 0.15s;
-            white-space: nowrap; flex-shrink: 0;
+            padding: 0.4rem 0.9rem; border-radius: 8px;
+            font-size: 0.78rem; font-weight: 700;
+            text-decoration: none; white-space: nowrap;
             background: var(--primary); color: white;
+            transition: all 0.15s;
         }
-        .board-search-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+        .real-apply-btn:hover { opacity: 0.85; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+        .real-job-btn-row { display: flex; gap: 0.35rem; }
 
         body.dark #boardTabsPanel { background: #1e293b; }
         body.dark .board-tabs-header { border-color: #334155; }
         body.dark .board-tab-btn { background: #0f172a; border-color: #334155; color: #94a3b8; }
         body.dark .board-tab-btn.active { background: #1e293b; color: #93c5fd; border-color: #334155; border-bottom-color: #1e293b; }
-        body.dark .board-job-row { border-color: #334155; }
-        body.dark .board-job-title { color: #f1f5f9; }
+        body.dark .board-count-badge { background: #334155; color: #94a3b8; }
+        body.dark .real-job-card { border-color: #334155; }
+        body.dark .real-job-title { color: #f1f5f9; }
+        body.dark .real-job-company { color: #94a3b8; }
+        body.dark .real-job-meta { color: #64748b; }
+        body.dark .real-reason-chip { background: #0f172a; border-color: #334155; color: #94a3b8; }
+        body.dark .real-job-type-badge { background: #1e1b4b; color: #818cf8; }
 
         /* ============================================
            LOCAL JOB BOARDS PANEL
@@ -1438,8 +1485,8 @@
     }
 
     function makeJobKey(job) {
-        return ((job.search_title || job.title || '') + '_' + (job.is_remote ? 'remote' : 'local'))
-            .toLowerCase().replace(/\s+/g, '_');
+        // Real jobs: use apply_link as unique key; fallback for legacy
+        return job.apply_link || ((job.search_title || job.title || '') + '_' + (job.is_remote ? 'remote' : 'local')).toLowerCase().replace(/\s+/g, '_');
     }
 
     // ============================================================
@@ -1584,45 +1631,34 @@
 
     function toggleFavorite(jobKey) {
         const favs = getFavorites();
-        if (favs.has(jobKey)) { favs.delete(jobKey); } else { favs.add(jobKey); }
+        const active = !favs.has(jobKey);
+        if (active) favs.add(jobKey); else favs.delete(jobKey);
         saveFavorites(favs);
-        // Update card UI
-        const wrap = document.querySelector(`.job-card-wrap[data-job-key="${CSS.escape(jobKey)}"]`);
-        if (wrap) {
-            const card = wrap.querySelector('.job-card');
-            const btn = wrap.querySelector('.fav-btn');
-            const active = favs.has(jobKey);
+        // Update ALL real-job-card elements with this key (appears in All tab + board tab)
+        document.querySelectorAll(`.real-job-card[data-job-key="${CSS.escape(jobKey)}"]`).forEach(card => {
             card.classList.toggle('favorited', active);
-            btn.classList.toggle('active', active);
-            btn.textContent = active ? '❤️' : '🤍';
-            btn.title = active ? 'Remove from favorites' : 'Save as favorite';
-        }
+            const btn = card.querySelector('.fav-btn');
+            if (btn) { btn.classList.toggle('active', active); btn.textContent = active ? '❤️' : '🤍'; }
+        });
         if (viewMode !== 'all') filterJobs();
     }
 
     function toggleIgnore(jobKey) {
         const ignored = getIgnored();
         const favs = getFavorites();
-        if (ignored.has(jobKey)) {
-            ignored.delete(jobKey);
-        } else {
-            ignored.add(jobKey);
-            favs.delete(jobKey); // can't be both ignored and favorited
-            saveFavorites(favs);
-        }
+        const active = !ignored.has(jobKey);
+        if (active) { ignored.add(jobKey); favs.delete(jobKey); saveFavorites(favs); }
+        else ignored.delete(jobKey);
         saveIgnored(ignored);
-        // Update card UI
-        const wrap = document.querySelector(`.job-card-wrap[data-job-key="${CSS.escape(jobKey)}"]`);
-        if (wrap) {
-            const card = wrap.querySelector('.job-card');
-            const ignBtn = wrap.querySelector('.ignore-btn');
-            const favBtn = wrap.querySelector('.fav-btn');
-            const active = ignored.has(jobKey);
+        // Update ALL real-job-card elements with this key
+        document.querySelectorAll(`.real-job-card[data-job-key="${CSS.escape(jobKey)}"]`).forEach(card => {
             card.classList.toggle('ignored-card', active);
             card.classList.remove('favorited');
-            ignBtn.classList.toggle('active', active);
+            const ignBtn = card.querySelector('.ignore-btn');
+            const favBtn = card.querySelector('.fav-btn');
+            if (ignBtn) ignBtn.classList.toggle('active', active);
             if (favBtn) { favBtn.classList.remove('active'); favBtn.textContent = '🤍'; }
-        }
+        });
         filterJobs();
     }
 
@@ -1674,28 +1710,27 @@
     }
 
     function filterJobs() {
-        const wraps = document.querySelectorAll('.job-card-wrap');
         const favs = getFavorites();
         const ignored = getIgnored();
-        let visible = 0;
-        wraps.forEach((el, i) => {
-            if (i >= allJobs.length) return;
-            const jobKey = makeJobKey(allJobs[i]);
+        // Filter all real-job-cards across all tabs
+        document.querySelectorAll('.real-job-card').forEach(card => {
+            const jobKey = card.dataset.jobKey;
             const isFav = favs.has(jobKey);
             const isIgn = ignored.has(jobKey);
-            const tagMatch = activeTags.size === 0 ||
-                [...activeTags].some(t => (allJobs[i].job_tags || []).includes(t));
             let show = false;
-            if (viewMode === 'favorites') show = isFav && tagMatch;
+            if (viewMode === 'favorites') show = isFav;
             else if (viewMode === 'ignored') show = isIgn;
-            else show = !isIgn && tagMatch; // 'all': hide ignored
-            el.style.display = show ? '' : 'none';
-            if (show) visible++;
+            else show = !isIgn; // 'all': hide ignored
+            card.style.display = show ? '' : 'none';
         });
         const countEl = document.getElementById('resultsCount');
         if (countEl) {
-            const label = viewMode === 'favorites' ? '❤️ favorites' : viewMode === 'ignored' ? '🚫 ignored' : `AI-matched job${visible !== 1 ? 's' : ''}`;
-            countEl.textContent = `${visible} ${label}`;
+            const total = allJobs.length;
+            const ignoredCount = ignored.size;
+            const favCount = allJobs.filter(j => favs.has(makeJobKey(j))).length;
+            if (viewMode === 'favorites') countEl.textContent = `${favCount} ❤️ favorite${favCount !== 1 ? 's' : ''}`;
+            else if (viewMode === 'ignored') countEl.textContent = `${ignoredCount} 🚫 ignored`;
+            else countEl.textContent = `${total - ignoredCount} of ${total} jobs shown`;
         }
     }
 
@@ -2015,7 +2050,7 @@
 
                 document.getElementById('resultsTitle').textContent = titleParts.join(' ');
                 document.getElementById('resultsCount').textContent =
-                    `${allJobs.length} AI-matched job${allJobs.length !== 1 ? 's' : ''}${data.resume_analyzed ? ' (resume matched)' : ''}`;
+                    `${allJobs.length} real job${allJobs.length !== 1 ? 's' : ''} found${data.resume_analyzed ? ' (resume matched)' : ''}`;
                 document.getElementById('resultsHeader').style.display = 'flex';
 
                 // Show new-jobs banner
@@ -2027,14 +2062,14 @@
                     bannerEl.style.display = 'none';
                 }
 
-                document.getElementById('jobsContainer').innerHTML =
-                    allJobs.map((job, i) => renderJob(job, i, newJobKeys)).join('');
+                // Render real job listings in board tabs (primary view)
+                renderBoardTabs(data.jobs_by_board || {}, allJobs);
 
-                // Render board tabs
-                renderBoardTabs(allJobs);
+                // Clear old-style job cards (not used with real jobs)
+                document.getElementById('jobsContainer').innerHTML = '';
 
-                // Render tag filter
-                renderTagFilter(allJobs);
+                // Render tag filter (hide — tags not applicable to real job data)
+                document.getElementById('tagFilterWrap').style.display = 'none';
 
                 // Render local job boards
                 const zipCode = document.getElementById('zip_code').value.trim();
@@ -2208,57 +2243,93 @@
     }
 
     // ============================================================
-    // BOARD TABS — group all AI jobs by job board
+    // BOARD TABS — real job listings grouped by job board
     // ============================================================
-    function renderBoardTabs(jobs) {
-        const panel = document.getElementById('boardTabsPanel');
-        if (!jobs || !jobs.length) { panel.style.display = 'none'; return; }
+    function formatPostedDate(dateStr) {
+        if (!dateStr) return '';
+        try {
+            const diff = Math.floor((Date.now() - new Date(dateStr)) / 86400000);
+            if (diff === 0) return 'Today';
+            if (diff === 1) return 'Yesterday';
+            if (diff < 7) return `${diff}d ago`;
+            if (diff < 30) return `${Math.floor(diff / 7)}w ago`;
+            return `${Math.floor(diff / 30)}mo ago`;
+        } catch { return ''; }
+    }
 
-        // Collect all unique boards in order they appear
-        const boardOrder = [];
-        const boardMap = {}; // boardName → { url (first encountered), jobs[] }
-        jobs.forEach((job, idx) => {
-            (job.job_links || []).forEach(link => {
-                if (!boardMap[link.name]) {
-                    boardMap[link.name] = { jobs: [] };
-                    boardOrder.push(link.name);
-                }
-                boardMap[link.name].jobs.push({ job, idx, url: link.url });
-            });
-        });
+    function renderRealJobCard(job) {
+        const jobKey = job.apply_link || (job.title + '|' + job.company + '|' + job.location).toLowerCase();
+        const isFav = isFavorite(jobKey);
+        const isIgn = isIgnoredJob(jobKey);
+        const s = job.match_score || 0;
+        const scoreCls = s >= 75 ? 'hi' : s >= 50 ? 'mid' : 'lo';
 
-        const tabBtns = boardOrder.map((name, i) =>
-            `<button class="board-tab-btn${i === 0 ? ' active' : ''}" data-board="${escapeHtml(name)}">${escapeHtml(name)}</button>`
+        const locationHtml = job.is_remote
+            ? `<span>🏠 Remote</span>`
+            : (job.location ? `<span>📍 ${escapeHtml(job.location)}</span>` : '');
+        const salaryHtml = job.salary ? `<span>💰 ${escapeHtml(job.salary)}</span>` : '';
+        const typeHtml = job.employment_type
+            ? `<span class="real-job-type-badge">${escapeHtml(job.employment_type)}</span>` : '';
+        const postedHtml = job.posted_at
+            ? `<span>🕐 ${formatPostedDate(job.posted_at)}</span>` : '';
+
+        const reasonsHtml = (job.match_reasons || []).map(r =>
+            `<span class="real-reason-chip">✓ ${escapeHtml(r)}</span>`
         ).join('');
 
-        const tabContents = boardOrder.map((name, i) => {
-            const rows = boardMap[name].jobs.map(({ job, idx, url }) => {
-                const s = job.match_score;
-                const scoreCls = s >= 75 ? 'hi' : s >= 50 ? 'mid' : 'lo';
-                const scoreHtml = s != null
-                    ? `<span class="board-job-score ${scoreCls}">${s}%</span>` : '';
-                return `<div class="board-job-row">
-                    <div class="board-job-info">
-                        <span class="board-job-num">#${idx + 1}</span>
-                        <span class="board-job-title" title="${escapeHtml(job.title || '')}">${escapeHtml(job.title || '')}</span>
-                        ${scoreHtml}
-                    </div>
-                    <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"
-                       class="board-search-btn track-link"
-                       data-job-idx="${idx}" data-link-idx="${(job.job_links || []).findIndex(l => l.name === name)}">
-                        Search →
-                    </a>
-                </div>`;
-            }).join('');
-            return `<div class="board-tab-content${i === 0 ? ' active' : ''}" data-board="${escapeHtml(name)}">${rows}</div>`;
+        return `<div class="real-job-card${isFav ? ' favorited' : ''}${isIgn ? ' ignored-card' : ''}" data-job-key="${escapeHtml(jobKey)}">
+            <div class="real-job-score-col">
+                <span class="real-score-badge ${scoreCls}">${s}%</span>
+            </div>
+            <div class="real-job-body">
+                <div class="real-job-title">${escapeHtml(job.title || '')}</div>
+                <div class="real-job-company">${escapeHtml(job.company || '')}</div>
+                <div class="real-job-meta">
+                    ${locationHtml}${salaryHtml}${typeHtml}${postedHtml}
+                </div>
+                ${reasonsHtml ? `<div class="real-job-reasons">${reasonsHtml}</div>` : ''}
+            </div>
+            <div class="real-job-actions">
+                <a href="${escapeHtml(job.apply_link || '#')}" target="_blank" rel="noopener noreferrer"
+                   class="real-apply-btn" onclick="markJobViewed('${escapeHtml(jobKey)}')">Apply →</a>
+                <div class="real-job-btn-row">
+                    <button class="fav-btn${isFav ? ' active' : ''}" data-job-key="${escapeHtml(jobKey)}">${isFav ? '❤️' : '🤍'}</button>
+                    <button class="ignore-btn${isIgn ? ' active' : ''}" data-job-key="${escapeHtml(jobKey)}">🚫</button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function renderBoardTabs(jobsByBoard, allJobsRanked) {
+        const panel = document.getElementById('boardTabsPanel');
+        if (!allJobsRanked || !allJobsRanked.length) { panel.style.display = 'none'; return; }
+
+        const boards = Object.keys(jobsByBoard);
+        const allTabs = ['All', ...boards];
+
+        const tabBtns = allTabs.map((name, i) => {
+            const count = name === 'All' ? allJobsRanked.length : (jobsByBoard[name] || []).length;
+            return `<button class="board-tab-btn${i === 0 ? ' active' : ''}" data-board="${escapeHtml(name)}">
+                ${escapeHtml(name)}<span class="board-count-badge">${count}</span>
+            </button>`;
         }).join('');
+
+        const allContent = `<div class="board-tab-content active" data-board="All">
+            ${allJobsRanked.map(renderRealJobCard).join('')}
+        </div>`;
+
+        const boardContents = boards.map(name =>
+            `<div class="board-tab-content" data-board="${escapeHtml(name)}">
+                ${(jobsByBoard[name] || []).map(renderRealJobCard).join('')}
+            </div>`
+        ).join('');
 
         panel.innerHTML = `
             <div class="board-tabs-header">
-                <div class="board-tabs-title">🌐 Browse by Job Board</div>
+                <div class="board-tabs-title">🎯 AI-Ranked Real Job Listings</div>
                 <div class="board-tab-btns">${tabBtns}</div>
             </div>
-            <div class="board-tab-contents">${tabContents}</div>`;
+            <div class="board-tab-contents">${allContent}${boardContents}</div>`;
         panel.style.display = 'block';
 
         // Tab switching
@@ -2267,9 +2338,17 @@
                 panel.querySelectorAll('.board-tab-btn').forEach(b => b.classList.remove('active'));
                 panel.querySelectorAll('.board-tab-content').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active');
-                panel.querySelector(`.board-tab-content[data-board="${btn.dataset.board}"]`).classList.add('active');
+                panel.querySelector(`.board-tab-content[data-board="${CSS.escape(btn.dataset.board)}"]`).classList.add('active');
             });
         });
+
+        // Fav / ignore buttons inside panel
+        panel.addEventListener('click', function(e) {
+            const favBtn = e.target.closest('.fav-btn');
+            if (favBtn) { toggleFavorite(favBtn.dataset.jobKey); return; }
+            const ignBtn = e.target.closest('.ignore-btn');
+            if (ignBtn) { toggleIgnore(ignBtn.dataset.jobKey); return; }
+        }, { once: false });
     }
 
     function renderLocalBoards(query, zip) {
