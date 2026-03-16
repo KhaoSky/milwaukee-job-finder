@@ -878,6 +878,78 @@
         .card-number { font-size: 0.7rem; font-weight: 700; color: var(--gray-400); text-align: right; }
 
         /* ============================================
+           BOARD TABS PANEL
+           ============================================ */
+        #boardTabsPanel {
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            margin-bottom: 1.25rem;
+        }
+        .board-tabs-header {
+            padding: 1rem 1.5rem 0;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .board-tabs-title {
+            font-size: 0.72rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.06em;
+            color: var(--gray-400); margin-bottom: 0.75rem;
+        }
+        .board-tab-btns {
+            display: flex; flex-wrap: wrap; gap: 0.375rem;
+            margin-bottom: -1px;
+        }
+        .board-tab-btn {
+            padding: 0.45rem 0.9rem;
+            border-radius: 8px 8px 0 0;
+            border: 1.5px solid var(--gray-200);
+            border-bottom: none;
+            background: var(--gray-50);
+            font-size: 0.78rem; font-weight: 600;
+            color: var(--gray-500);
+            cursor: pointer; transition: all 0.15s;
+        }
+        .board-tab-btn:hover { background: white; color: var(--primary); }
+        .board-tab-btn.active {
+            background: white; color: var(--primary);
+            border-color: var(--gray-200); border-bottom-color: white;
+        }
+        .board-tab-contents { padding: 1rem 1.5rem 1.25rem; }
+        .board-tab-content { display: none; }
+        .board-tab-content.active { display: block; }
+        .board-job-row {
+            display: flex; align-items: center;
+            justify-content: space-between; gap: 1rem;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .board-job-row:last-child { border-bottom: none; }
+        .board-job-info { display: flex; align-items: center; gap: 0.6rem; flex: 1; min-width: 0; }
+        .board-job-num { font-size: 0.68rem; font-weight: 700; color: var(--gray-400); min-width: 1.4rem; }
+        .board-job-title { font-size: 0.85rem; font-weight: 600; color: var(--gray-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .board-job-score { font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 99px; white-space: nowrap; flex-shrink: 0; }
+        .board-job-score.hi { background: #dcfce7; color: #15803d; }
+        .board-job-score.mid { background: #fef9c3; color: #854d0e; }
+        .board-job-score.lo { background: #fee2e2; color: #991b1b; }
+        .board-search-btn {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            padding: 0.35rem 0.8rem; border-radius: 7px;
+            font-size: 0.75rem; font-weight: 600;
+            text-decoration: none; transition: all 0.15s;
+            white-space: nowrap; flex-shrink: 0;
+            background: var(--primary); color: white;
+        }
+        .board-search-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+
+        body.dark #boardTabsPanel { background: #1e293b; }
+        body.dark .board-tabs-header { border-color: #334155; }
+        body.dark .board-tab-btn { background: #0f172a; border-color: #334155; color: #94a3b8; }
+        body.dark .board-tab-btn.active { background: #1e293b; color: #93c5fd; border-color: #334155; border-bottom-color: #1e293b; }
+        body.dark .board-job-row { border-color: #334155; }
+        body.dark .board-job-title { color: #f1f5f9; }
+
+        /* ============================================
            LOCAL JOB BOARDS PANEL
            ============================================ */
         .local-boards-panel {
@@ -1218,6 +1290,9 @@
 
         <!-- New jobs banner -->
         <div id="newJobsBanner" class="new-jobs-banner" style="display:none"></div>
+
+        <!-- Board Tabs Panel -->
+        <div id="boardTabsPanel" style="display:none"></div>
 
         <!-- Job Cards Container -->
         <div id="jobsContainer"></div>
@@ -1689,10 +1764,6 @@
                         ${companies ? `<div class="company-examples" style="margin-top:0.75rem">🏢 ${companies}</div>` : ''}
                     </div>
                 </div>
-                <div class="job-card-footer">
-                    <div class="job-links-label">Apply on Job Boards <span style="font-weight:400;font-size:0.65rem;margin-left:4px">(past 2 months)</span></div>
-                    <div class="job-links">${links}</div>
-                </div>
             </div>
         </div>`;
     }
@@ -1749,6 +1820,7 @@
         document.getElementById('errorState').style.display = 'none';
         document.getElementById('resultsHeader').style.display = 'none';
         document.getElementById('jobsContainer').innerHTML = '';
+        document.getElementById('boardTabsPanel').style.display = 'none';
         document.getElementById('loadingState').style.display = 'block';
         document.getElementById('searchBtn').disabled = true;
         document.getElementById('searchBtn').textContent = '⏳ Searching...';
@@ -1813,6 +1885,9 @@
 
                 document.getElementById('jobsContainer').innerHTML =
                     allJobs.map((job, i) => renderJob(job, i, newJobKeys)).join('');
+
+                // Render board tabs
+                renderBoardTabs(allJobs);
 
                 // Render tag filter
                 renderTagFilter(allJobs);
@@ -1986,6 +2061,71 @@
         if (n >= 53000 && n <= 54999) return 'wisconsin';
         if (n >= 60000 && n <= 62999) return 'chicago';
         return 'all';
+    }
+
+    // ============================================================
+    // BOARD TABS — group all AI jobs by job board
+    // ============================================================
+    function renderBoardTabs(jobs) {
+        const panel = document.getElementById('boardTabsPanel');
+        if (!jobs || !jobs.length) { panel.style.display = 'none'; return; }
+
+        // Collect all unique boards in order they appear
+        const boardOrder = [];
+        const boardMap = {}; // boardName → { url (first encountered), jobs[] }
+        jobs.forEach((job, idx) => {
+            (job.job_links || []).forEach(link => {
+                if (!boardMap[link.name]) {
+                    boardMap[link.name] = { jobs: [] };
+                    boardOrder.push(link.name);
+                }
+                boardMap[link.name].jobs.push({ job, idx, url: link.url });
+            });
+        });
+
+        const tabBtns = boardOrder.map((name, i) =>
+            `<button class="board-tab-btn${i === 0 ? ' active' : ''}" data-board="${escapeHtml(name)}">${escapeHtml(name)}</button>`
+        ).join('');
+
+        const tabContents = boardOrder.map((name, i) => {
+            const rows = boardMap[name].jobs.map(({ job, idx, url }) => {
+                const s = job.match_score;
+                const scoreCls = s >= 75 ? 'hi' : s >= 50 ? 'mid' : 'lo';
+                const scoreHtml = s != null
+                    ? `<span class="board-job-score ${scoreCls}">${s}%</span>` : '';
+                return `<div class="board-job-row">
+                    <div class="board-job-info">
+                        <span class="board-job-num">#${idx + 1}</span>
+                        <span class="board-job-title" title="${escapeHtml(job.title || '')}">${escapeHtml(job.title || '')}</span>
+                        ${scoreHtml}
+                    </div>
+                    <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"
+                       class="board-search-btn track-link"
+                       data-job-idx="${idx}" data-link-idx="${(job.job_links || []).findIndex(l => l.name === name)}">
+                        Search →
+                    </a>
+                </div>`;
+            }).join('');
+            return `<div class="board-tab-content${i === 0 ? ' active' : ''}" data-board="${escapeHtml(name)}">${rows}</div>`;
+        }).join('');
+
+        panel.innerHTML = `
+            <div class="board-tabs-header">
+                <div class="board-tabs-title">🌐 Browse by Job Board</div>
+                <div class="board-tab-btns">${tabBtns}</div>
+            </div>
+            <div class="board-tab-contents">${tabContents}</div>`;
+        panel.style.display = 'block';
+
+        // Tab switching
+        panel.querySelectorAll('.board-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                panel.querySelectorAll('.board-tab-btn').forEach(b => b.classList.remove('active'));
+                panel.querySelectorAll('.board-tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                panel.querySelector(`.board-tab-content[data-board="${btn.dataset.board}"]`).classList.add('active');
+            });
+        });
     }
 
     function renderLocalBoards(query, zip) {
