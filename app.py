@@ -3,7 +3,6 @@ import io
 import json
 import base64
 from flask import Flask, request, jsonify, render_template
-import anthropic
 
 # Load .env file if present
 try:
@@ -15,7 +14,25 @@ except ImportError:
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
-client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+def call_ai(prompt, provider="openai"):
+    """Call the selected AI provider and return the response text."""
+    if provider == "gemini":
+        import google.generativeai as genai
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        resp = model.generate_content(prompt)
+        return resp.text or ""
+
+    else:  # openai (default)
+        from openai import OpenAI
+        oai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        resp = oai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=8000,
+            temperature=0.3
+        )
+        return resp.choices[0].message.content or ""
 
 CAREER_FIELDS = [
     {"group": "Technology & IT", "fields": [
@@ -279,6 +296,7 @@ def search_jobs():
     location_pref = request.form.get("location_pref", "both")
     keywords = request.form.get("keywords", "")
     zip_code = request.form.get("zip_code", "").strip()
+    ai_provider = request.form.get("ai_provider", "openai")
     resume_text = ""
 
     # Handle resume upload
@@ -348,18 +366,7 @@ Focus on realistic jobs available in the Milwaukee job market. Include a mix of 
 Return ONLY a valid JSON array of job objects sorted by match_score descending, no other text."""
 
     try:
-        response = client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=10000,   # Increased — thinking blocks consume tokens before the text block
-            thinking={"type": "adaptive"},
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        # Collect ALL text blocks (adaptive thinking can produce multiple)
-        response_text = ""
-        for block in response.content:
-            if block.type == "text":
-                response_text += block.text
+        response_text = call_ai(prompt, ai_provider)
 
         if not response_text.strip():
             return jsonify({"success": False, "error": "AI returned an empty response. Please try again."}), 500
@@ -406,8 +413,6 @@ Return ONLY a valid JSON array of job objects sorted by match_score descending, 
         except Exception:
             pass
         return jsonify({"success": False, "error": f"Failed to parse AI response: {str(e)}"}), 500
-    except anthropic.APIError as e:
-        return jsonify({"success": False, "error": f"AI API error: {str(e)}"}), 500
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -448,19 +453,10 @@ RESUME:
 
 Return ONLY valid JSON, no other text."""
 
+    ai_provider = request.form.get("ai_provider", "openai")
+
     try:
-        response = client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=1500,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        response_text = ""
-        for block in response.content:
-            if block.type == "text":
-                response_text = block.text
-                break
-
+        response_text = call_ai(prompt, ai_provider)
         analysis = json.loads(response_text)
         return jsonify({"success": True, "analysis": analysis})
 

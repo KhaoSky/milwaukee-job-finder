@@ -647,6 +647,27 @@
         }
         .job-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
 
+        /* New job badge */
+        .new-job-badge {
+            position: absolute;
+            top: 0; left: 0;
+            background: #f59e0b;
+            color: white;
+            font-size: 0.6rem; font-weight: 800; letter-spacing: 0.05em;
+            padding: 0.2rem 0.6rem;
+            border-radius: var(--radius) 0 var(--radius) 0;
+            text-transform: uppercase; z-index: 2;
+        }
+        .new-jobs-banner {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white; border-radius: var(--radius);
+            padding: 0.75rem 1.25rem;
+            margin-bottom: 1rem;
+            font-size: 0.875rem; font-weight: 600;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        body.dark .new-jobs-banner { background: linear-gradient(135deg, #92400e, #78350f); }
+
         /* Viewed badge */
         .viewed-badge {
             position: absolute;
@@ -1097,6 +1118,16 @@
                     Upload your resume for personalized AI matching. The AI will read your experience, skills, and background to find your best-fit jobs in Milwaukee and remote roles.
                 </div>
 
+                <!-- AI Provider selector -->
+                <div class="form-group" style="margin-bottom:0.75rem">
+                    <label style="font-size:0.8rem;font-weight:600;color:var(--gray-700);margin-bottom:0.4rem;display:block">AI Provider</label>
+                    <div class="loc-btn-group" id="providerGroup">
+                        <button type="button" class="loc-btn active" data-provider="openai">🟢 OpenAI</button>
+                        <button type="button" class="loc-btn" data-provider="gemini">🔵 Gemini</button>
+                    </div>
+                    <input type="hidden" name="ai_provider" id="aiProviderInput" value="openai">
+                </div>
+
                 <button type="submit" class="search-btn" id="searchBtn">
                     🤖 Find AI-Matched Jobs
                 </button>
@@ -1184,6 +1215,9 @@
             <div class="tag-chips-row" id="tagChips"></div>
         </div>
 
+        <!-- New jobs banner -->
+        <div id="newJobsBanner" class="new-jobs-banner" style="display:none"></div>
+
         <!-- Job Cards Container -->
         <div id="jobsContainer"></div>
 
@@ -1213,6 +1247,9 @@
         darkBtn.textContent = '☀️';
         darkBtn.title = 'Switch to light mode';
     }
+
+    // Request browser notification permission so we can alert on new jobs
+    requestNotificationPermission();
 
     // ============================================================
     // CLICK HISTORY
@@ -1275,6 +1312,51 @@
     function makeJobKey(job) {
         return ((job.search_title || job.title || '') + '_' + (job.is_remote ? 'remote' : 'local'))
             .toLowerCase().replace(/\s+/g, '_');
+    }
+
+    // ============================================================
+    // NEW JOB DETECTION
+    // ============================================================
+    const CACHE_KEY = 'mke_job_cache';
+
+    function makeSearchKey(careerField, locationPref, keywords) {
+        return [careerField, locationPref, keywords].map(s => (s||'').trim().toLowerCase()).join('|');
+    }
+
+    function getJobCache() {
+        try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); } catch { return {}; }
+    }
+
+    function saveSearchCache(searchKey, jobs) {
+        const cache = getJobCache();
+        cache[searchKey] = { ts: Date.now(), keys: jobs.map(makeJobKey) };
+        // Keep only the 20 most recent searches
+        const entries = Object.entries(cache).sort((a,b) => b[1].ts - a[1].ts).slice(0, 20);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(Object.fromEntries(entries)));
+    }
+
+    function getNewJobKeys(searchKey, jobs) {
+        const cache = getJobCache();
+        const entry = cache[searchKey];
+        if (!entry) return new Set(); // first time — nothing is "new" yet
+        const oldKeys = new Set(entry.keys);
+        return new Set(jobs.map(makeJobKey).filter(k => !oldKeys.has(k)));
+    }
+
+    function notifyNewJobs(count, searchLabel) {
+        if (!count) return;
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('Milwaukee Job Finder', {
+                body: `${count} new job${count > 1 ? 's' : ''} found for "${searchLabel}"`,
+                icon: '/static/icon.png'
+            });
+        }
+    }
+
+    function requestNotificationPermission() {
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
     }
 
     function isJobViewed(jobKey) {
@@ -1435,9 +1517,19 @@
         analyzeResume(file);
     }
 
+    // Provider selector
+    document.getElementById('providerGroup').addEventListener('click', e => {
+        const btn = e.target.closest('[data-provider]');
+        if (!btn) return;
+        document.querySelectorAll('#providerGroup .loc-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('aiProviderInput').value = btn.dataset.provider;
+    });
+
     async function analyzeResume(file) {
         const formData = new FormData();
         formData.append('resume', file);
+        formData.append('ai_provider', document.getElementById('aiProviderInput').value);
         try {
             const res = await fetch('/api/analyze-resume', { method: 'POST', body: formData });
             const data = await res.json();
@@ -1493,12 +1585,13 @@
         }[name] || 'indeed';
     }
 
-    function renderJob(job, index) {
+    function renderJob(job, index, newJobKeys = new Set()) {
         const color = avatarColors[index % avatarColors.length];
         const emoji = getEmoji(job.title || '');
         const isRemote = job.is_remote;
         const jobKey = makeJobKey(job);
         const viewed = isJobViewed(jobKey);
+        const isNew = newJobKeys.has(jobKey);
 
         // Company logo — try Google favicon (sz=64 is most reliably served),
         // fall back to DuckDuckGo icon service, then remove if both fail.
@@ -1512,6 +1605,8 @@
 
         const viewedBadge = viewed
             ? `<div class="viewed-badge">✓ Previously Viewed</div>` : '';
+        const newBadge = isNew
+            ? `<div class="new-job-badge">🆕 New</div>` : '';
 
         const locationBadge = isRemote
             ? `<span class="badge badge-remote">🏠 Remote / WFH</span>`
@@ -1557,6 +1652,7 @@
         <div class="job-card-wrap animate-in" style="animation-delay: ${index * 0.06}s">
             <div class="job-card">
                 ${viewedBadge}
+                ${newBadge}
                 <div class="job-card-header">
                     <div class="company-avatar" style="background: ${color}">
                         <span class="avatar-emoji">${emoji}</span>
@@ -1688,13 +1784,34 @@
                 if (data.career_field) titleParts.push(data.career_field);
                 titleParts.push('Jobs — ' + locLabel);
 
+                // Detect new jobs vs last search with same params
+                const searchKey = makeSearchKey(
+                    data.career_field,
+                    data.location_pref,
+                    document.getElementById('keywords').value.trim()
+                );
+                const newJobKeys = getNewJobKeys(searchKey, allJobs);
+                saveSearchCache(searchKey, allJobs);
+                if (newJobKeys.size > 0) {
+                    notifyNewJobs(newJobKeys.size, titleParts[0] || 'your search');
+                }
+
                 document.getElementById('resultsTitle').textContent = titleParts.join(' ');
                 document.getElementById('resultsCount').textContent =
                     `${allJobs.length} AI-matched job${allJobs.length !== 1 ? 's' : ''}${data.resume_analyzed ? ' (resume matched)' : ''}`;
                 document.getElementById('resultsHeader').style.display = 'flex';
 
+                // Show new-jobs banner
+                const bannerEl = document.getElementById('newJobsBanner');
+                if (newJobKeys.size > 0) {
+                    bannerEl.textContent = `🆕 ${newJobKeys.size} new job${newJobKeys.size > 1 ? 's' : ''} since your last search!`;
+                    bannerEl.style.display = 'flex';
+                } else {
+                    bannerEl.style.display = 'none';
+                }
+
                 document.getElementById('jobsContainer').innerHTML =
-                    allJobs.map((job, i) => renderJob(job, i)).join('');
+                    allJobs.map((job, i) => renderJob(job, i, newJobKeys)).join('');
 
                 // Render tag filter
                 renderTagFilter(allJobs);
