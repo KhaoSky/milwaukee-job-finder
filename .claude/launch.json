@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "jobs_app",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "app.py"
+      ],
+      "port": 5000
+    }
+  ]
+}
