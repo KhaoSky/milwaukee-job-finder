@@ -17,10 +17,11 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 # ============================================================
 # AI PROVIDER
 # ============================================================
-def call_ai(prompt, provider="claude"):
+def call_ai(prompt, provider="claude", api_key=None):
     """Call Claude AI and return the response text."""
     import anthropic
-    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+    client = anthropic.Anthropic(api_key=key)
     resp = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=4000,
@@ -31,14 +32,13 @@ def call_ai(prompt, provider="claude"):
 # ============================================================
 # REAL JOB FETCHING — JSearch API (RapidAPI)
 # ============================================================
-def fetch_real_jobs(query, location=None, is_remote=False, num_pages=3):
+def fetch_real_jobs(query, location=None, is_remote=False, num_pages=2, date_posted="month", api_key=None):
     """Fetch real job listings from JSearch API via RapidAPI."""
-    api_key = os.environ.get("JSEARCH_API_KEY")
-    if not api_key:
+    key = api_key or os.environ.get("JSEARCH_API_KEY")
+    if not key:
         raise ValueError(
             "JSEARCH_API_KEY not configured. "
-            "Sign up free at https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch "
-            "and add JSEARCH_API_KEY to your environment variables."
+            "Enter it in the ⚙️ Settings panel or add it to your environment variables."
         )
 
     search_query = query
@@ -49,7 +49,7 @@ def fetch_real_jobs(query, location=None, is_remote=False, num_pages=3):
         "query": search_query,
         "page": "1",
         "num_pages": str(num_pages),
-        "date_posted": "month",
+        "date_posted": date_posted,
     }
     if is_remote:
         params["remote_jobs_only"] = "true"
@@ -57,7 +57,7 @@ def fetch_real_jobs(query, location=None, is_remote=False, num_pages=3):
     resp = requests.get(
         "https://jsearch.p.rapidapi.com/search",
         headers={
-            "X-RapidAPI-Key": api_key,
+            "X-RapidAPI-Key": key,
             "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
         },
         params=params,
@@ -81,7 +81,7 @@ def format_salary(job):
         return f"${int(min_s):,}-${int(max_s):,}/yr"
 
 
-def rank_jobs_with_ai(raw_jobs, resume_text, career_field, keywords, provider):
+def rank_jobs_with_ai(raw_jobs, resume_text, career_field, keywords, provider, anthropic_key=None):
     """Use AI to score and rank real job listings against the candidate's profile."""
     if not raw_jobs:
         return []
@@ -121,7 +121,7 @@ For EACH job return a JSON object with:
 
 Return ONLY a valid JSON array of all {len(raw_jobs)} jobs. No other text."""
 
-    response_text = call_ai(prompt, provider)
+    response_text = call_ai(prompt, provider, api_key=anthropic_key)
 
     try:
         scores = json.loads(response_text)
@@ -322,7 +322,9 @@ def search_jobs():
     career_field = request.form.get("career_field", "")
     location_pref = request.form.get("location_pref", "both")
     keywords = request.form.get("keywords", "")
-    ai_provider = request.form.get("ai_provider", "openai")
+    date_posted = request.form.get("date_posted", "month")
+    anthropic_key = request.form.get("anthropic_key") or None
+    jsearch_key = request.form.get("jsearch_key") or None
     resume_text = extract_resume(request.files)
 
     # Build search query
@@ -331,12 +333,16 @@ def search_jobs():
     try:
         # Fetch real jobs from JSearch
         if location_pref == "remote":
-            raw_jobs = fetch_real_jobs(query, is_remote=True, num_pages=2)
+            raw_jobs = fetch_real_jobs(query, is_remote=True, num_pages=2,
+                                       date_posted=date_posted, api_key=jsearch_key)
         elif location_pref == "milwaukee":
-            raw_jobs = fetch_real_jobs(query, location="Milwaukee, WI", num_pages=2)
+            raw_jobs = fetch_real_jobs(query, location="Milwaukee, WI", num_pages=2,
+                                       date_posted=date_posted, api_key=jsearch_key)
         else:  # both — search Milwaukee + remote, deduplicate
-            local = fetch_real_jobs(query, location="Milwaukee, WI", num_pages=1)
-            remote = fetch_real_jobs(query, is_remote=True, num_pages=1)
+            local = fetch_real_jobs(query, location="Milwaukee, WI", num_pages=1,
+                                    date_posted=date_posted, api_key=jsearch_key)
+            remote = fetch_real_jobs(query, is_remote=True, num_pages=1,
+                                     date_posted=date_posted, api_key=jsearch_key)
             seen = set()
             raw_jobs = []
             for job in local + remote:
@@ -352,7 +358,8 @@ def search_jobs():
             }), 404
 
         # AI ranks the real jobs
-        ranked_jobs = rank_jobs_with_ai(raw_jobs, resume_text, career_field, keywords, ai_provider)
+        ranked_jobs = rank_jobs_with_ai(raw_jobs, resume_text, career_field, keywords,
+                                        "claude", anthropic_key=anthropic_key)
 
         # Group by source board
         jobs_by_board = {}
@@ -399,10 +406,10 @@ RESUME:
 
 Return ONLY valid JSON, no other text."""
 
-    ai_provider = request.form.get("ai_provider", "openai")
+    anthropic_key = request.form.get("anthropic_key") or None
 
     try:
-        response_text = call_ai(prompt, ai_provider)
+        response_text = call_ai(prompt, "claude", api_key=anthropic_key)
         analysis = json.loads(response_text)
         return jsonify({"success": True, "analysis": analysis})
     except Exception as e:
