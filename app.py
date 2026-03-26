@@ -17,25 +17,21 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 # ============================================================
 # AI PROVIDER
 # ============================================================
-def call_ai(prompt, provider="openai"):
-    """Call the selected AI provider and return the response text."""
-    if provider == "gemini":
-        import google.generativeai as genai
-        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        resp = model.generate_content(prompt)
-        return resp.text or ""
-
-    else:  # openai (default)
-        from openai import OpenAI
-        oai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        resp = oai.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=8000,
-            temperature=0.3
-        )
-        return resp.choices[0].message.content or ""
+def call_ai(prompt, provider="claude"):
+    """Call Claude AI and return the response text."""
+    import anthropic
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    resp = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=10000,
+        thinking={"type": "adaptive"},
+        messages=[{"role": "user", "content": prompt}]
+    )
+    text = ""
+    for block in resp.content:
+        if block.type == "text":
+            text += block.text
+    return text
 
 # ============================================================
 # REAL JOB FETCHING — JSearch API (RapidAPI)
