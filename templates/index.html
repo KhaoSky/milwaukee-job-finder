@@ -1122,6 +1122,15 @@
         .sched-test-btn:hover { background: #5865f2; color: white; }
         body.dark .sched-discord-row input { background: #0f172a; border-color: #334155; color: #f1f5f9; }
         .sched-discord-hint { font-size: 0.7rem; color: #5865f2; margin-top: 0.35rem; }
+        .sched-resume-box { margin-top: 0.6rem; padding: 0.55rem 0.7rem; border: 1.5px dashed var(--gray-200); border-radius: 8px; background: var(--gray-50); }
+        .sched-resume-status { font-size: 0.75rem; color: var(--gray-500); margin-bottom: 0.4rem; }
+        .sched-resume-status.saved { color: var(--success); font-weight: 600; }
+        .sched-resume-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+        .sched-resume-upload-btn { font-size: 0.73rem; font-weight: 600; padding: 0.3rem 0.65rem; border-radius: 7px; border: 1.5px solid var(--primary); cursor: pointer; background: var(--primary-light); color: var(--primary); }
+        .sched-resume-upload-btn:hover { background: var(--primary); color: white; }
+        .sched-resume-hint { font-size: 0.67rem; color: var(--gray-400); margin-top: 0.35rem; }
+        body.dark .sched-resume-box { background: #0f172a; border-color: #334155; }
+        body.dark .sched-resume-status { color: #64748b; }
 
         /* Viewed state for real job cards */
         .real-job-card.viewed-card { opacity: 0.65; }
@@ -1457,7 +1466,19 @@
                         </select>
                     </div>
                 </div>
-                <div class="sched-actions">
+                <!-- Resume for scheduled search -->
+                <div class="sched-resume-box">
+                    <div class="sched-resume-status" id="schedResumeStatus">No resume saved — searches will rank without resume context.</div>
+                    <div class="sched-resume-row">
+                        <label class="sched-resume-upload-btn">
+                            📄 Upload Resume
+                            <input type="file" id="schedResumeFile" accept=".pdf,.docx,.doc,.txt" style="display:none" onchange="saveSchedResume()">
+                        </label>
+                        <button class="sched-btn danger" onclick="clearSchedResume()">Clear</button>
+                    </div>
+                    <div class="sched-resume-hint">Auto-saved when you run a normal search with a resume. Stored on server for scheduled use.</div>
+                </div>
+                <div class="sched-actions" style="margin-top:0.55rem">
                     <button class="sched-btn" id="schedSaveBtn" onclick="saveSchedule()">💾 Save Schedule</button>
                     <button class="sched-btn danger" onclick="clearSchedule()">Remove</button>
                 </div>
@@ -1669,6 +1690,42 @@
         setTimeout(() => { btn.textContent = orig; }, 1500);
     }
 
+    async function refreshSchedResumeStatus() {
+        const el = document.getElementById('schedResumeStatus');
+        if (!el) return;
+        try {
+            const r = await fetch('/api/saved-resume');
+            const d = await r.json();
+            if (d.saved) {
+                const date = new Date(d.saved_at).toLocaleString();
+                const name = d.filename ? ` · ${d.filename}` : '';
+                el.textContent = `✓ Resume saved${name} · ${d.char_count.toLocaleString()} chars · ${date}`;
+                el.classList.add('saved');
+            } else {
+                el.textContent = 'No resume saved — searches will rank without resume context.';
+                el.classList.remove('saved');
+            }
+        } catch { el.textContent = 'Could not check resume status.'; }
+    }
+
+    async function saveSchedResume() {
+        const file = document.getElementById('schedResumeFile').files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('resume', file);
+        const el = document.getElementById('schedResumeStatus');
+        el.textContent = 'Uploading…'; el.classList.remove('saved');
+        const r = await fetch('/api/save-resume', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.success) { await refreshSchedResumeStatus(); }
+        else { el.textContent = `Error: ${d.error}`; }
+    }
+
+    async function clearSchedResume() {
+        await fetch('/api/saved-resume', { method: 'DELETE' });
+        await refreshSchedResumeStatus();
+    }
+
     async function renderSchedStatus() {
         const btn = document.getElementById('schedToggleBtn');
         const statusEl = document.getElementById('schedStatus');
@@ -1688,6 +1745,7 @@
                 btn.textContent = 'Disable'; btn.classList.add('enabled');
                 controlsEl.style.display = 'block';
                 discordRow.style.display = 'flex';
+                refreshSchedResumeStatus();
                 // Populate editable fields from saved config
                 document.getElementById('schedInterval').value = sched.interval || 'daily';
                 const schedSel = document.getElementById('schedCareerField');
@@ -1722,6 +1780,7 @@
             document.getElementById('schedControls').style.display = 'block';
             document.getElementById('schedDiscordRow').style.display = 'flex';
             document.getElementById('schedStatus').textContent = 'Set your search filters and click Save Schedule.';
+            refreshSchedResumeStatus();
         }
     }
 

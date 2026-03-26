@@ -359,6 +359,11 @@ def search_jobs():
                 "error": "No jobs found. Try broader keywords or a different career field."
             }), 404
 
+        # Auto-save resume for scheduled search
+        if resume_text:
+            filename = request.files["resume"].filename if "resume" in request.files else ""
+            _save_resume_cache(resume_text, filename)
+
         # AI ranks the real jobs
         ranked_jobs = rank_jobs_with_ai(raw_jobs, resume_text, career_field, keywords,
                                         "claude", anthropic_key=anthropic_key)
@@ -424,6 +429,7 @@ Return ONLY valid JSON, no other text."""
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCHEDULE_FILE = os.path.join(_BASE_DIR, "schedule_config.json")
 LAST_JOBS_FILE = os.path.join(_BASE_DIR, "last_jobs_cache.json")
+RESUME_CACHE_FILE = os.path.join(_BASE_DIR, "resume_cache.json")
 
 _scheduler_lock = threading.Lock()
 _scheduler = None
@@ -453,6 +459,24 @@ def _load_last_job_keys():
 def _save_last_job_keys(keys):
     with open(LAST_JOBS_FILE, "w") as f:
         json.dump(list(keys)[-500:], f)
+
+
+def _load_saved_resume():
+    try:
+        with open(RESUME_CACHE_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _save_resume_cache(text, filename=""):
+    with open(RESUME_CACHE_FILE, "w") as f:
+        json.dump({
+            "text": text,
+            "filename": filename,
+            "char_count": len(text),
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+        }, f)
 
 
 def send_discord_notification(webhook_url, new_jobs, search_summary):
@@ -537,7 +561,9 @@ def run_server_scheduled_search():
                     raw_jobs.append(job)
 
         if raw_jobs:
-            ranked = rank_jobs_with_ai(raw_jobs, "", config.get("career_field", ""),
+            resume_cache = _load_saved_resume()
+            resume_text = resume_cache["text"] if resume_cache else ""
+            ranked = rank_jobs_with_ai(raw_jobs, resume_text, config.get("career_field", ""),
                                        config.get("keywords", ""), "claude",
                                        anthropic_key=anthropic_key)
             prev_keys = _load_last_job_keys()
@@ -665,6 +691,42 @@ def test_discord():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# SAVED RESUME ROUTES
+# ============================================================
+@app.route("/api/saved-resume", methods=["GET"])
+def get_saved_resume():
+    cache = _load_saved_resume()
+    if not cache:
+        return jsonify({"saved": False})
+    return jsonify({
+        "saved": True,
+        "filename": cache.get("filename", ""),
+        "char_count": cache.get("char_count", 0),
+        "saved_at": cache.get("saved_at", ""),
+        "preview": (cache.get("text", "")[:120] + "…") if cache.get("text") else "",
+    })
+
+
+@app.route("/api/save-resume", methods=["POST"])
+def save_resume_endpoint():
+    resume_text = extract_resume(request.files)
+    if not resume_text:
+        return jsonify({"success": False, "error": "Could not extract text from file"}), 400
+    filename = request.files["resume"].filename if "resume" in request.files else ""
+    _save_resume_cache(resume_text, filename)
+    return jsonify({"success": True, "char_count": len(resume_text), "filename": filename})
+
+
+@app.route("/api/saved-resume", methods=["DELETE"])
+def delete_saved_resume():
+    try:
+        os.remove(RESUME_CACHE_FILE)
+    except Exception:
+        pass
+    return jsonify({"success": True})
 
 
 if __name__ == "__main__":
