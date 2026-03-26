@@ -22,16 +22,11 @@ def call_ai(prompt, provider="claude"):
     import anthropic
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     resp = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=10000,
-        thinking={"type": "adaptive"},
+        model="claude-haiku-4-5-20251001",
+        max_tokens=4000,
         messages=[{"role": "user", "content": prompt}]
     )
-    text = ""
-    for block in resp.content:
-        if block.type == "text":
-            text += block.text
-    return text
+    return resp.content[0].text
 
 # ============================================================
 # REAL JOB FETCHING — JSearch API (RapidAPI)
@@ -336,12 +331,12 @@ def search_jobs():
     try:
         # Fetch real jobs from JSearch
         if location_pref == "remote":
-            raw_jobs = fetch_real_jobs(query, is_remote=True, num_pages=3)
+            raw_jobs = fetch_real_jobs(query, is_remote=True, num_pages=2)
         elif location_pref == "milwaukee":
-            raw_jobs = fetch_real_jobs(query, location="Milwaukee, WI", num_pages=3)
+            raw_jobs = fetch_real_jobs(query, location="Milwaukee, WI", num_pages=2)
         else:  # both — search Milwaukee + remote, deduplicate
-            local = fetch_real_jobs(query, location="Milwaukee, WI", num_pages=2)
-            remote = fetch_real_jobs(query, is_remote=True, num_pages=2)
+            local = fetch_real_jobs(query, location="Milwaukee, WI", num_pages=1)
+            remote = fetch_real_jobs(query, is_remote=True, num_pages=1)
             seen = set()
             raw_jobs = []
             for job in local + remote:
