@@ -1,6 +1,7 @@
 import os
 import io
 import re
+import sys
 import json
 import requests
 import threading
@@ -14,7 +15,13 @@ try:
 except ImportError:
     pass
 
-app = Flask(__name__)
+# ── Directory layout ──────────────────────────────────────────────────────────
+# MKE_BASE_DIR: where templates live (set by main.py to sys._MEIPASS when frozen)
+# MKE_DATA_DIR: persistent data files (set by main.py to %APPDATA%\MKEJobFinder)
+_BASE_DIR = os.environ.get('MKE_BASE_DIR') or os.path.dirname(os.path.abspath(__file__))
+_DATA_DIR = os.environ.get('MKE_DATA_DIR') or _BASE_DIR
+
+app = Flask(__name__, template_folder=os.path.join(_BASE_DIR, 'templates'))
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
 # ============================================================
@@ -471,10 +478,10 @@ Return ONLY valid JSON, no other text."""
 # ============================================================
 # SERVER-SIDE SCHEDULER + DISCORD NOTIFICATIONS
 # ============================================================
-_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SCHEDULE_FILE = os.path.join(_BASE_DIR, "schedule_config.json")
-LAST_JOBS_FILE = os.path.join(_BASE_DIR, "last_jobs_cache.json")
-RESUME_CACHE_FILE = os.path.join(_BASE_DIR, "resume_cache.json")
+os.makedirs(_DATA_DIR, exist_ok=True)
+SCHEDULE_FILE    = os.path.join(_DATA_DIR, "schedule_config.json")
+LAST_JOBS_FILE   = os.path.join(_DATA_DIR, "last_jobs_cache.json")
+RESUME_CACHE_FILE = os.path.join(_DATA_DIR, "resume_cache.json")
 
 _scheduler_lock = threading.Lock()
 _scheduler = None
@@ -773,6 +780,13 @@ def delete_saved_resume():
     except Exception:
         pass
     return jsonify({"success": True})
+
+
+@app.route("/api/run-now", methods=["POST"])
+def run_now():
+    """Trigger the scheduled search immediately (used by tray menu & UI)."""
+    threading.Thread(target=run_server_scheduled_search, daemon=True).start()
+    return jsonify({"success": True, "message": "Search started in background"})
 
 
 if __name__ == "__main__":

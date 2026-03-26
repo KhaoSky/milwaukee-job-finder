@@ -32,7 +32,8 @@ echo Installing dependencies...
 pip install -r requirements.txt -q
 
 echo.
-echo Starting server at http://localhost:5000
-echo Press Ctrl+C to stop
+echo Starting Milwaukee Job Finder...
+echo Browser will open automatically.
+echo Right-click the tray icon to control the app.
 echo.
-python app.py
+python main.py

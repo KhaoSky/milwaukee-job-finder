@@ -1107,6 +1107,8 @@
         .sched-btn { font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.7rem; border-radius: 7px; border: 1.5px solid var(--gray-200); cursor: pointer; background: transparent; color: var(--gray-600); transition: all 0.15s; }
         .sched-btn:hover { border-color: var(--primary); color: var(--primary); }
         .sched-btn.enabled { background: var(--primary); border-color: var(--primary); color: white; }
+        .sched-btn.paused { border-color: #f59e0b; color: #f59e0b; }
+        .sched-btn.paused:hover { background: #f59e0b; color: white; border-color: #f59e0b; }
         .sched-btn.danger:hover { border-color: #ef4444; color: #ef4444; }
         body.dark .sched-section { border-color: #334155; }
         body.dark .sched-header-title { color: #cbd5e1; }
@@ -1726,68 +1728,21 @@
         await refreshSchedResumeStatus();
     }
 
-    async function renderSchedStatus() {
-        const btn = document.getElementById('schedToggleBtn');
-        const statusEl = document.getElementById('schedStatus');
-        const controlsEl = document.getElementById('schedControls');
-        const discordRow = document.getElementById('schedDiscordRow');
-        const discordHint = document.getElementById('schedDiscordHint');
-        try {
-            const resp = await fetch('/api/schedule');
-            const sched = await resp.json();
-            if (!sched || !sched.enabled) {
-                btn.textContent = 'Enable'; btn.classList.remove('enabled');
-                statusEl.textContent = 'Not scheduled. Runs on server — works even when browser is closed.';
-                controlsEl.style.display = 'none';
-                discordRow.style.display = 'none';
-                discordHint.style.display = 'none';
-            } else {
-                btn.textContent = 'Disable'; btn.classList.add('enabled');
-                controlsEl.style.display = 'block';
-                discordRow.style.display = 'flex';
-                refreshSchedResumeStatus();
-                // Populate editable fields from saved config
-                document.getElementById('schedInterval').value = sched.interval || 'daily';
-                const schedSel = document.getElementById('schedCareerField');
-                for (const opt of schedSel.options) { if (opt.value === (sched.career_field || '')) { opt.selected = true; break; } }
-                document.getElementById('schedKeywords').value = sched.keywords || '';
-                document.getElementById('schedLocation').value = sched.location_pref || 'both';
-                document.getElementById('schedDatePosted').value = sched.date_posted || 'week';
-                if (sched.discord_webhook) {
-                    document.getElementById('schedDiscordWebhook').value = sched.discord_webhook;
-                    discordHint.style.display = 'block';
-                } else {
-                    discordHint.style.display = 'none';
-                }
-                const last = sched.last_run_at ? new Date(sched.last_run_at).toLocaleString() : 'Never';
-                const label = (sched.keywords || sched.career_field || 'all fields');
-                const errPart = sched.last_error ? ` ⚠️ ${sched.last_error.slice(0,60)}` : '';
-                statusEl.innerHTML = `🖥️ <b>${sched.interval}</b> · "${label}" · Last: ${last}${errPart}`;
-            }
-        } catch {
-            btn.textContent = 'Enable'; btn.classList.remove('enabled');
-            statusEl.textContent = 'Could not reach server to check schedule.';
+    function _populateSchedFields(sched) {
+        document.getElementById('schedInterval').value = sched.interval || 'daily';
+        document.getElementById('schedKeywords').value = sched.keywords || '';
+        document.getElementById('schedLocation').value = sched.location_pref || 'both';
+        document.getElementById('schedDatePosted').value = sched.date_posted || 'week';
+        const schedSel = document.getElementById('schedCareerField');
+        for (const opt of schedSel.options) {
+            if (opt.value === (sched.career_field || '')) { opt.selected = true; break; }
         }
     }
 
-    async function toggleSchedule() {
-        const btn = document.getElementById('schedToggleBtn');
-        const isEnabled = btn.textContent.trim() === 'Disable';
-        if (isEnabled) {
-            await fetch('/api/schedule', { method: 'DELETE' });
-            await renderSchedStatus();
-        } else {
-            document.getElementById('schedControls').style.display = 'block';
-            document.getElementById('schedDiscordRow').style.display = 'flex';
-            document.getElementById('schedStatus').textContent = 'Set your search filters and click Save Schedule.';
-            refreshSchedResumeStatus();
-        }
-    }
-
-    async function saveSchedule() {
+    function _currentSchedBody(enabled) {
         const apiKeys = getApiKeys();
-        const body = {
-            enabled:         true,
+        return {
+            enabled,
             interval:        document.getElementById('schedInterval').value,
             career_field:    document.getElementById('schedCareerField').value,
             keywords:        document.getElementById('schedKeywords').value.trim(),
@@ -1797,15 +1752,106 @@
             anthropic_key:   apiKeys.anthropic || '',
             jsearch_key:     apiKeys.jsearch   || '',
         };
+    }
+
+    async function renderSchedStatus() {
+        const btn        = document.getElementById('schedToggleBtn');
+        const statusEl   = document.getElementById('schedStatus');
+        const controlsEl = document.getElementById('schedControls');
+        const discordRow = document.getElementById('schedDiscordRow');
+        const discordHint = document.getElementById('schedDiscordHint');
+        try {
+            const resp  = await fetch('/api/schedule');
+            const sched = await resp.json();
+            const hasConfig = sched && (sched.career_field || sched.keywords || sched.interval);
+
+            if (sched && sched.enabled) {
+                // ── Active ──
+                btn.textContent = 'Disable';
+                btn.classList.add('enabled'); btn.classList.remove('paused');
+                controlsEl.style.display = 'block';
+                discordRow.style.display  = 'flex';
+                refreshSchedResumeStatus();
+                _populateSchedFields(sched);
+                if (sched.discord_webhook) {
+                    document.getElementById('schedDiscordWebhook').value = sched.discord_webhook;
+                    discordHint.style.display = 'block';
+                } else {
+                    discordHint.style.display = 'none';
+                }
+                const last    = sched.last_run_at ? new Date(sched.last_run_at).toLocaleString() : 'Never';
+                const label   = sched.keywords || sched.career_field || 'all fields';
+                const errPart = sched.last_error ? ` ⚠️ ${sched.last_error.slice(0, 60)}` : '';
+                statusEl.innerHTML = `🟢 <b>${sched.interval}</b> · "${label}" · Last: ${last}${errPart}`;
+
+            } else if (hasConfig) {
+                // ── Paused (config exists but enabled:false) ──
+                btn.textContent = 'Resume';
+                btn.classList.remove('enabled'); btn.classList.add('paused');
+                controlsEl.style.display = 'block';
+                discordRow.style.display  = 'flex';
+                refreshSchedResumeStatus();
+                _populateSchedFields(sched);
+                if (sched.discord_webhook) {
+                    document.getElementById('schedDiscordWebhook').value = sched.discord_webhook;
+                }
+                discordHint.style.display = sched.discord_webhook ? 'block' : 'none';
+                const label = sched.keywords || sched.career_field || 'all fields';
+                statusEl.innerHTML = `⏸️ Paused · "${label}" · Edit below and click Save to resume.`;
+
+            } else {
+                // ── Not configured ──
+                btn.textContent = 'Enable';
+                btn.classList.remove('enabled', 'paused');
+                controlsEl.style.display = 'none';
+                discordRow.style.display  = 'none';
+                discordHint.style.display = 'none';
+                statusEl.textContent = 'Not scheduled. Runs in background — works even when the app window is closed.';
+            }
+        } catch {
+            btn.textContent = 'Enable'; btn.classList.remove('enabled', 'paused');
+            statusEl.textContent = 'Could not reach server to check schedule.';
+        }
+    }
+
+    async function toggleSchedule() {
+        const btn  = document.getElementById('schedToggleBtn');
+        const text = btn.textContent.trim();
+
+        if (text === 'Disable') {
+            // Pause — save config with enabled:false (keeps all settings, just stops the scheduler)
+            await fetch('/api/schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_currentSchedBody(false)),
+            });
+            await renderSchedStatus();
+        } else {
+            // Enable / Resume — show controls so user can review & save
+            document.getElementById('schedControls').style.display = 'block';
+            document.getElementById('schedDiscordRow').style.display = 'flex';
+            if (text === 'Enable') {
+                document.getElementById('schedStatus').textContent =
+                    'Configure your search below and click Save Schedule.';
+            }
+            refreshSchedResumeStatus();
+        }
+    }
+
+    async function saveSchedule() {
         const resp = await fetch('/api/schedule', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
+            body: JSON.stringify(_currentSchedBody(true)),  // always enable on explicit save
         });
         const result = await resp.json();
         if (result.success) {
             const saveBtn = document.getElementById('schedSaveBtn');
-            if (saveBtn) { const orig = saveBtn.textContent; saveBtn.textContent = '✓ Saved!'; setTimeout(() => { saveBtn.textContent = orig; }, 1500); }
+            if (saveBtn) {
+                const orig = saveBtn.textContent;
+                saveBtn.textContent = '✓ Saved!';
+                setTimeout(() => { saveBtn.textContent = orig; }, 1500);
+            }
         }
         await renderSchedStatus();
     }
