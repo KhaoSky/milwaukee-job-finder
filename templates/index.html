@@ -1283,7 +1283,7 @@
                     Upload your resume for personalized AI matching. The AI will read your experience, skills, and background to find your best-fit jobs in Milwaukee and remote roles.
                 </div>
 
-                <input type="hidden" name="ai_provider" id="aiProviderInput" value="claude">
+                <input type="hidden" name="ai_provider" value="claude">
 
                 <button type="submit" class="search-btn" id="searchBtn">
                     🤖 Find AI-Matched Jobs
@@ -1759,19 +1759,10 @@
         analyzeResume(file);
     }
 
-    // Provider selector
-    document.getElementById('providerGroup').addEventListener('click', e => {
-        const btn = e.target.closest('[data-provider]');
-        if (!btn) return;
-        document.querySelectorAll('#providerGroup .loc-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById('aiProviderInput').value = btn.dataset.provider;
-    });
-
     async function analyzeResume(file) {
         const formData = new FormData();
         formData.append('resume', file);
-        formData.append('ai_provider', document.getElementById('aiProviderInput').value);
+        formData.append('ai_provider', 'claude');
         try {
             const res = await fetch('/api/analyze-resume', { method: 'POST', body: formData });
             const data = await res.json();
