@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import json
 import requests
 import threading
@@ -103,7 +104,7 @@ def rank_jobs_with_ai(raw_jobs, resume_text, career_field, keywords, provider, a
         })
 
     resume_section = (
-        f"CANDIDATE RESUME:\n---\n{resume_text[:3000]}\n---\n" if resume_text else ""
+        f"CANDIDATE RESUME:\n---\n{strip_pii(resume_text)[:3000]}\n---\n" if resume_text else ""
     )
     career_section = f"Career Field: {career_field}" if career_field else ""
     keywords_section = f"Keywords: {keywords}" if keywords else ""
@@ -258,6 +259,50 @@ for _group in CAREER_FIELDS:
     _group["fields"].sort()
 
 CAREER_FIELDS_FLAT = [field for group in CAREER_FIELDS for field in group["fields"]]
+
+# ============================================================
+# PII STRIPPING
+# ============================================================
+def strip_pii(text):
+    """Remove personal contact info from resume text before AI use or server storage."""
+    if not text:
+        return text
+
+    # Remove email addresses
+    text = re.sub(
+        r'\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b',
+        '[email removed]', text
+    )
+
+    # Remove phone numbers — handles (555) 555-5555 / 555-555-5555 / +1 555 555 5555 / etc.
+    text = re.sub(
+        r'(\+?1[\s.\-]?)?(\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4})\b',
+        '[phone removed]', text
+    )
+
+    # Remove full name: first occurrence in the top 6 lines that looks like
+    # "Firstname [Middle] Lastname" (2–4 title-cased words, optional middle initial)
+    lines = text.split('\n')
+    filtered = []
+    name_removed = False
+    checked = 0
+    for line in lines:
+        stripped = line.strip()
+        if not name_removed and stripped and checked < 6:
+            checked += 1
+            if re.match(
+                r'^[A-Z][a-zA-Z\'\-]{1,}(?:\s+[A-Z]\.?)?(?:\s+[A-Z][a-zA-Z\'\-]{1,}){1,2}$',
+                stripped
+            ):
+                name_removed = True
+                continue  # drop this line
+        filtered.append(line)
+
+    text = '\n'.join(filtered)
+    # Collapse runs of 3+ blank lines left by removals
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
 
 # ============================================================
 # RESUME PARSING
@@ -470,11 +515,12 @@ def _load_saved_resume():
 
 
 def _save_resume_cache(text, filename=""):
+    clean = strip_pii(text)
     with open(RESUME_CACHE_FILE, "w") as f:
         json.dump({
-            "text": text,
+            "text": clean,
             "filename": filename,
-            "char_count": len(text),
+            "char_count": len(clean),
             "saved_at": datetime.now(timezone.utc).isoformat(),
         }, f)
 
