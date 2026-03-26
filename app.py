@@ -2,6 +2,8 @@ import os
 import io
 import json
 import requests
+import threading
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, render_template
 
 # Load .env file if present
@@ -412,6 +414,255 @@ Return ONLY valid JSON, no other text."""
         response_text = call_ai(prompt, "claude", api_key=anthropic_key)
         analysis = json.loads(response_text)
         return jsonify({"success": True, "analysis": analysis})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# SERVER-SIDE SCHEDULER + DISCORD NOTIFICATIONS
+# ============================================================
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SCHEDULE_FILE = os.path.join(_BASE_DIR, "schedule_config.json")
+LAST_JOBS_FILE = os.path.join(_BASE_DIR, "last_jobs_cache.json")
+
+_scheduler_lock = threading.Lock()
+_scheduler = None
+
+
+def _load_schedule_config():
+    try:
+        with open(SCHEDULE_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _save_schedule_config(config):
+    with open(SCHEDULE_FILE, "w") as f:
+        json.dump(config, f, indent=2)
+
+
+def _load_last_job_keys():
+    try:
+        with open(LAST_JOBS_FILE) as f:
+            return set(json.load(f))
+    except Exception:
+        return set()
+
+
+def _save_last_job_keys(keys):
+    with open(LAST_JOBS_FILE, "w") as f:
+        json.dump(list(keys)[-500:], f)
+
+
+def send_discord_notification(webhook_url, new_jobs, search_summary):
+    """Send Discord embed notification for new job matches."""
+    url = webhook_url or os.environ.get("DISCORD_WEBHOOK", "")
+    if not url or not new_jobs:
+        return
+    embeds = []
+    for job in new_jobs[:5]:
+        loc = job.get("location") or ("Remote" if job.get("is_remote") else "N/A")
+        salary = job.get("salary") or "Not listed"
+        score = job.get("match_score", "?")
+        reasons = job.get("match_reasons", [])
+        desc = " · ".join(reasons[:2]) if reasons else job.get("description_snippet", "")[:120]
+        embeds.append({
+            "title": f"{job.get('title', 'Job')} @ {job.get('company', '')}",
+            "url": job.get("apply_link", "") or "",
+            "color": 3447003,
+            "description": desc or "",
+            "fields": [
+                {"name": "Match", "value": f"{score}%", "inline": True},
+                {"name": "Location", "value": loc, "inline": True},
+                {"name": "Salary", "value": salary, "inline": True},
+            ],
+            "footer": {"text": job.get("source", "")},
+        })
+
+    content = (
+        f"🎯 **{len(new_jobs)} new job match{'es' if len(new_jobs) != 1 else ''} found!**"
+        f"  Search: _{search_summary}_"
+    )
+    payload = {"content": content, "embeds": embeds[:10]}
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        r.raise_for_status()
+    except Exception as e:
+        print(f"[scheduler] Discord notification failed: {e}")
+
+
+def run_server_scheduled_search():
+    """Background job: fetch jobs, diff against cache, notify Discord."""
+    config = _load_schedule_config()
+    if not config or not config.get("enabled"):
+        return
+
+    # Prevent duplicate runs within the interval
+    last_run = config.get("last_run_at")
+    if last_run:
+        elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(last_run)).total_seconds()
+        interval_secs = 86400 if config.get("interval") != "weekly" else 604800
+        if elapsed < interval_secs * 0.9:
+            return
+
+    print(f"[scheduler] Running scheduled search at {datetime.now(timezone.utc).isoformat()}")
+    try:
+        query = " ".join(filter(None, [
+            config.get("career_field", ""),
+            config.get("keywords", "")
+        ])).strip() or "jobs"
+        location_pref = config.get("location_pref", "both")
+        date_posted = config.get("date_posted", "week")
+        jsearch_key = config.get("jsearch_key") or os.environ.get("JSEARCH_API_KEY")
+        anthropic_key = config.get("anthropic_key") or os.environ.get("ANTHROPIC_API_KEY")
+
+        if location_pref == "remote":
+            raw_jobs = fetch_real_jobs(query, is_remote=True, num_pages=2,
+                                       date_posted=date_posted, api_key=jsearch_key)
+        elif location_pref == "milwaukee":
+            raw_jobs = fetch_real_jobs(query, location="Milwaukee, WI", num_pages=2,
+                                       date_posted=date_posted, api_key=jsearch_key)
+        else:
+            local = fetch_real_jobs(query, location="Milwaukee, WI", num_pages=1,
+                                    date_posted=date_posted, api_key=jsearch_key)
+            remote = fetch_real_jobs(query, is_remote=True, num_pages=1,
+                                     date_posted=date_posted, api_key=jsearch_key)
+            seen_ids = set()
+            raw_jobs = []
+            for job in local + remote:
+                jid = job.get("job_id", "")
+                if jid not in seen_ids:
+                    seen_ids.add(jid)
+                    raw_jobs.append(job)
+
+        if raw_jobs:
+            ranked = rank_jobs_with_ai(raw_jobs, "", config.get("career_field", ""),
+                                       config.get("keywords", ""), "claude",
+                                       anthropic_key=anthropic_key)
+            prev_keys = _load_last_job_keys()
+            new_jobs = [j for j in ranked if j.get("apply_link", "") not in prev_keys]
+            all_keys = prev_keys | {j.get("apply_link", "") for j in ranked}
+            _save_last_job_keys(all_keys)
+
+            webhook = config.get("discord_webhook") or os.environ.get("DISCORD_WEBHOOK", "")
+            if webhook and new_jobs:
+                summary = (config.get("career_field", "") + " " + config.get("keywords", "")).strip() or "All fields"
+                send_discord_notification(webhook, new_jobs, summary)
+            print(f"[scheduler] Done — {len(ranked)} jobs, {len(new_jobs)} new, Discord: {bool(webhook and new_jobs)}")
+
+        config["last_run_at"] = datetime.now(timezone.utc).isoformat()
+        config.pop("last_error", None)
+    except Exception as e:
+        print(f"[scheduler] Error: {e}")
+        config["last_run_at"] = datetime.now(timezone.utc).isoformat()
+        config["last_error"] = str(e)
+    _save_schedule_config(config)
+
+
+def _start_scheduler(config):
+    global _scheduler
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+    except ImportError:
+        print("[scheduler] APScheduler not installed — background scheduling unavailable")
+        return
+    with _scheduler_lock:
+        if _scheduler is None:
+            _scheduler = BackgroundScheduler(daemon=True)
+            _scheduler.start()
+        # Remove old job if present
+        try:
+            _scheduler.remove_job("scheduled_search")
+        except Exception:
+            pass
+        if config and config.get("enabled"):
+            weeks = 1 if config.get("interval") == "weekly" else 0
+            hours = 0 if weeks else 24
+            _scheduler.add_job(
+                run_server_scheduled_search,
+                "interval",
+                hours=hours, weeks=weeks,
+                id="scheduled_search",
+                replace_existing=True,
+            )
+            print(f"[scheduler] Scheduled: {config.get('interval','daily')}")
+
+
+# Restore schedule on startup
+with app.app_context():
+    _cfg = _load_schedule_config()
+    if _cfg and _cfg.get("enabled"):
+        _start_scheduler(_cfg)
+
+
+# ============================================================
+# SCHEDULE API ROUTES
+# ============================================================
+@app.route("/api/schedule", methods=["GET"])
+def get_schedule():
+    config = _load_schedule_config()
+    if not config:
+        return jsonify({"enabled": False})
+    safe = {k: v for k, v in config.items() if k not in ("anthropic_key", "jsearch_key")}
+    return jsonify(safe)
+
+
+@app.route("/api/schedule", methods=["POST"])
+def save_schedule():
+    data = request.json or {}
+    existing = _load_schedule_config() or {}
+    config = {
+        "enabled":         data.get("enabled", True),
+        "interval":        data.get("interval", "daily"),
+        "career_field":    data.get("career_field", ""),
+        "keywords":        data.get("keywords", ""),
+        "location_pref":   data.get("location_pref", "both"),
+        "date_posted":     data.get("date_posted", "week"),
+        "discord_webhook": data.get("discord_webhook", ""),
+        # Keep old keys if not re-supplied (so we don't clear them on UI toggle)
+        "anthropic_key":   data.get("anthropic_key") or existing.get("anthropic_key", ""),
+        "jsearch_key":     data.get("jsearch_key") or existing.get("jsearch_key", ""),
+        "last_run_at":     existing.get("last_run_at"),
+        "saved_at":        datetime.now(timezone.utc).isoformat(),
+    }
+    _save_schedule_config(config)
+    _start_scheduler(config)
+    return jsonify({"success": True})
+
+
+@app.route("/api/schedule", methods=["DELETE"])
+def delete_schedule():
+    try:
+        os.remove(SCHEDULE_FILE)
+    except Exception:
+        pass
+    global _scheduler
+    with _scheduler_lock:
+        if _scheduler:
+            try:
+                _scheduler.remove_job("scheduled_search")
+            except Exception:
+                pass
+    return jsonify({"success": True})
+
+
+@app.route("/api/test-discord", methods=["POST"])
+def test_discord():
+    data = request.json or {}
+    webhook_url = data.get("webhook_url") or os.environ.get("DISCORD_WEBHOOK", "")
+    if not webhook_url:
+        return jsonify({"success": False, "error": "No webhook URL provided"}), 400
+    fake_job = {
+        "title": "Senior Software Engineer", "company": "Acme Corp",
+        "location": "Milwaukee, WI", "salary": "$120,000-$150,000/yr",
+        "match_score": 92, "source": "LinkedIn",
+        "apply_link": "https://example.com",
+        "match_reasons": ["Strong Python & AWS experience", "Remote-friendly team"],
+    }
+    try:
+        send_discord_notification(webhook_url, [fake_job], "Test notification")
+        return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

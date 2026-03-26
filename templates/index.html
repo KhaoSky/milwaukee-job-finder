@@ -1104,6 +1104,16 @@
         body.dark .sched-header-title { color: #cbd5e1; }
         body.dark .sched-status { color: #64748b; }
         body.dark .sched-controls select { background: #0f172a; border-color: #334155; color: #f1f5f9; }
+        .sched-server-badge { font-size: 0.65rem; font-weight: 700; background: #7c3aed22; color: #7c3aed; border-radius: 5px; padding: 0.15rem 0.45rem; letter-spacing: 0.03em; }
+        body.dark .sched-server-badge { background: #7c3aed33; color: #a78bfa; }
+        .sched-discord-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+        .sched-discord-row input { flex: 1; min-width: 180px; font-size: 0.78rem; padding: 0.35rem 0.6rem; border: 1.5px solid var(--gray-200); border-radius: 8px; background: var(--gray-50); color: var(--gray-800); }
+        .sched-discord-row input:focus { outline: none; border-color: #5865f2; }
+        .sched-discord-row input::placeholder { color: var(--gray-400); }
+        .sched-test-btn { font-size: 0.72rem; font-weight: 600; padding: 0.3rem 0.65rem; border-radius: 7px; border: 1.5px solid #5865f2; cursor: pointer; background: transparent; color: #5865f2; white-space: nowrap; }
+        .sched-test-btn:hover { background: #5865f2; color: white; }
+        body.dark .sched-discord-row input { background: #0f172a; border-color: #334155; color: #f1f5f9; }
+        .sched-discord-hint { font-size: 0.7rem; color: #5865f2; margin-top: 0.35rem; }
 
         /* Viewed state for real job cards */
         .real-job-card.viewed-card { opacity: 0.65; }
@@ -1397,9 +1407,10 @@
         <div class="sched-section">
             <div class="sched-header">
                 <span class="sched-header-title">⏰ Scheduled Search</span>
+                <span class="sched-server-badge">🖥️ Server-side</span>
                 <button class="sched-btn" id="schedToggleBtn" onclick="toggleSchedule()">Enable</button>
             </div>
-            <div class="sched-status" id="schedStatus">Not scheduled. Enable to auto-search daily or weekly.</div>
+            <div class="sched-status" id="schedStatus">Not scheduled. Runs on server — works even when browser is closed.</div>
             <div class="sched-controls" id="schedControls" style="display:none">
                 <select id="schedInterval">
                     <option value="daily">Daily</option>
@@ -1408,6 +1419,11 @@
                 <button class="sched-btn" onclick="saveSchedule()">💾 Save</button>
                 <button class="sched-btn danger" onclick="clearSchedule()">Remove</button>
             </div>
+            <div class="sched-discord-row" id="schedDiscordRow" style="display:none">
+                <input type="url" id="schedDiscordWebhook" placeholder="Discord webhook URL (optional)...">
+                <button class="sched-test-btn" onclick="testDiscord()">Test 🔔</button>
+            </div>
+            <div class="sched-discord-hint" id="schedDiscordHint" style="display:none">📣 Discord notifications enabled</div>
         </div>
     </aside>
 
@@ -1579,81 +1595,114 @@
     });
 
     // ============================================================
-    // SCHEDULED SEARCH
+    // SCHEDULED SEARCH (server-side via /api/schedule)
     // ============================================================
-    const SCHED_LS = 'mke_scheduled_search';
+    const SCHED_LS = 'mke_scheduled_search'; // kept for backward compat / UI cache
 
-    function getSchedule() {
-        try { return JSON.parse(localStorage.getItem(SCHED_LS) || 'null'); } catch { return null; }
-    }
-    function renderSchedStatus() {
-        const sched = getSchedule();
+    async function renderSchedStatus() {
         const btn = document.getElementById('schedToggleBtn');
         const statusEl = document.getElementById('schedStatus');
         const controlsEl = document.getElementById('schedControls');
-        if (!sched) {
+        const discordRow = document.getElementById('schedDiscordRow');
+        const discordHint = document.getElementById('schedDiscordHint');
+        try {
+            const resp = await fetch('/api/schedule');
+            const sched = await resp.json();
+            if (!sched || !sched.enabled) {
+                btn.textContent = 'Enable'; btn.classList.remove('enabled');
+                statusEl.textContent = 'Not scheduled. Runs on server — works even when browser is closed.';
+                controlsEl.style.display = 'none';
+                discordRow.style.display = 'none';
+                discordHint.style.display = 'none';
+            } else {
+                btn.textContent = 'Disable'; btn.classList.add('enabled');
+                controlsEl.style.display = 'flex';
+                discordRow.style.display = 'flex';
+                document.getElementById('schedInterval').value = sched.interval || 'daily';
+                if (sched.discord_webhook) {
+                    document.getElementById('schedDiscordWebhook').value = sched.discord_webhook;
+                    discordHint.style.display = 'block';
+                } else {
+                    discordHint.style.display = 'none';
+                }
+                const last = sched.last_run_at ? new Date(sched.last_run_at).toLocaleString() : 'Never';
+                const label = (sched.keywords || sched.career_field || 'all fields');
+                const errPart = sched.last_error ? ` ⚠️ ${sched.last_error.slice(0,60)}` : '';
+                statusEl.innerHTML = `🖥️ <b>${sched.interval}</b> · "${label}" · Last: ${last}${errPart}`;
+            }
+        } catch {
             btn.textContent = 'Enable'; btn.classList.remove('enabled');
-            statusEl.textContent = 'Not scheduled. Enable to auto-search daily or weekly.';
-            controlsEl.style.display = 'none';
-            return;
+            statusEl.textContent = 'Could not reach server to check schedule.';
         }
-        btn.textContent = 'Disable'; btn.classList.add('enabled');
-        controlsEl.style.display = 'flex';
-        document.getElementById('schedInterval').value = sched.interval;
-        const last = sched.lastRunAt ? new Date(sched.lastRunAt).toLocaleString() : 'Never';
-        statusEl.textContent = `${sched.interval} · "${sched.keywords || sched.career_field || 'all fields'}" · Last: ${last}`;
     }
-    function toggleSchedule() {
-        if (getSchedule()) { clearSchedule(); }
-        else {
+
+    async function toggleSchedule() {
+        const btn = document.getElementById('schedToggleBtn');
+        const isEnabled = btn.textContent.trim() === 'Disable';
+        if (isEnabled) {
+            await fetch('/api/schedule', { method: 'DELETE' });
+            await renderSchedStatus();
+        } else {
             document.getElementById('schedControls').style.display = 'flex';
+            document.getElementById('schedDiscordRow').style.display = 'flex';
             document.getElementById('schedStatus').textContent = 'Choose interval and click Save.';
         }
     }
-    function saveSchedule() {
-        const sched = {
-            interval:      document.getElementById('schedInterval').value,
-            career_field:  document.getElementById('career_field').value,
-            keywords:      document.getElementById('keywords').value,
-            location_pref: document.querySelector('.loc-btn.active')?.dataset.value || 'both',
-            date_posted:   document.getElementById('filterDatePosted')?.value || 'month',
-            lastRunAt:     null,
-            savedAt:       Date.now()
+
+    async function saveSchedule() {
+        const apiKeys = getApiKeys();
+        const body = {
+            enabled:         true,
+            interval:        document.getElementById('schedInterval').value,
+            career_field:    document.getElementById('career_field').value,
+            keywords:        document.getElementById('keywords').value,
+            location_pref:   document.querySelector('.loc-btn.active')?.dataset.value || 'both',
+            date_posted:     document.getElementById('filterDatePosted')?.value || 'week',
+            discord_webhook: document.getElementById('schedDiscordWebhook').value.trim(),
+            anthropic_key:   apiKeys.anthropic || '',
+            jsearch_key:     apiKeys.jsearch   || '',
         };
-        localStorage.setItem(SCHED_LS, JSON.stringify(sched));
-        renderSchedStatus();
-    }
-    function clearSchedule() {
-        localStorage.removeItem(SCHED_LS);
-        renderSchedStatus();
-    }
-    function isScheduleDue(sched) {
-        if (!sched || !sched.lastRunAt) return true;
-        const ms = sched.interval === 'weekly' ? 7 * 86400000 : 86400000;
-        return (Date.now() - sched.lastRunAt) >= ms;
-    }
-    async function runScheduledSearch(sched) {
-        // Restore form fields
-        const sel = document.getElementById('career_field');
-        for (const opt of sel.options) { if (opt.value === sched.career_field) { opt.selected = true; break; } }
-        document.getElementById('keywords').value = sched.keywords || '';
-        document.querySelectorAll('.loc-btn').forEach(b => b.classList.toggle('active', b.dataset.value === (sched.location_pref || 'both')));
-        if (document.getElementById('filterDatePosted')) document.getElementById('filterDatePosted').value = sched.date_posted || 'month';
-        // Submit
-        document.getElementById('searchForm').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-        // Update last run
-        const updated = { ...sched, lastRunAt: Date.now() };
-        localStorage.setItem(SCHED_LS, JSON.stringify(updated));
-        renderSchedStatus();
-    }
-    // On page load: check if a scheduled search is due
-    (function() {
-        renderSchedStatus();
-        const sched = getSchedule();
-        if (sched && isScheduleDue(sched)) {
-            setTimeout(() => runScheduledSearch(sched), 900);
+        const resp = await fetch('/api/schedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const result = await resp.json();
+        if (result.success) {
+            const saveBtn = document.querySelector('.sched-btn:not(.danger):not(#schedToggleBtn)');
+            if (saveBtn) { const orig = saveBtn.textContent; saveBtn.textContent = '✓ Saved!'; setTimeout(() => { saveBtn.textContent = orig; }, 1500); }
         }
-    })();
+        await renderSchedStatus();
+    }
+
+    async function clearSchedule() {
+        await fetch('/api/schedule', { method: 'DELETE' });
+        await renderSchedStatus();
+    }
+
+    async function testDiscord() {
+        const webhook = document.getElementById('schedDiscordWebhook').value.trim();
+        if (!webhook) { alert('Enter a Discord webhook URL first.'); return; }
+        const btn = document.querySelector('.sched-test-btn');
+        const orig = btn.textContent;
+        btn.textContent = 'Sending...';
+        btn.disabled = true;
+        try {
+            const resp = await fetch('/api/test-discord', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ webhook_url: webhook }),
+            });
+            const r = await resp.json();
+            btn.textContent = r.success ? '✓ Sent!' : '✗ Failed';
+            setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+        } catch {
+            btn.textContent = '✗ Error'; btn.disabled = false;
+        }
+    }
+
+    // On page load: fetch server schedule status
+    renderSchedStatus();
 
     // ============================================================
     // DARK MODE
