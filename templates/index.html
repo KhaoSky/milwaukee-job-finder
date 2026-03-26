@@ -1094,8 +1094,16 @@
         .sched-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
         .sched-header-title { font-size: 0.8rem; font-weight: 700; color: var(--gray-700); }
         .sched-status { font-size: 0.72rem; color: var(--gray-400); line-height: 1.4; }
-        .sched-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
-        .sched-controls select { font-size: 0.8rem; padding: 0.35rem 0.5rem; border: 1.5px solid var(--gray-200); border-radius: 8px; background: var(--gray-50); }
+        .sched-controls { display: block; margin-top: 0.6rem; }
+        .sched-copy-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
+        .sched-copy-btn { font-size: 0.75rem; font-weight: 600; padding: 0.32rem 0.7rem; border-radius: 7px; border: 1.5px solid var(--primary); cursor: pointer; background: var(--primary-light); color: var(--primary); transition: all 0.15s; }
+        .sched-copy-btn:hover { background: var(--primary); color: white; }
+        .sched-copy-hint { font-size: 0.68rem; color: var(--gray-400); }
+        .sched-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 0.6rem; margin-bottom: 0.55rem; }
+        .sched-field-label { font-size: 0.64rem; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 0.12rem; }
+        .sched-field-select, .sched-field-input { width: 100%; font-size: 0.77rem; padding: 0.3rem 0.45rem; border: 1.5px solid var(--gray-200); border-radius: 8px; background: var(--gray-50); color: var(--gray-800); }
+        .sched-field-select:focus, .sched-field-input:focus { outline: none; border-color: var(--primary); }
+        .sched-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
         .sched-btn { font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.7rem; border-radius: 7px; border: 1.5px solid var(--gray-200); cursor: pointer; background: transparent; color: var(--gray-600); transition: all 0.15s; }
         .sched-btn:hover { border-color: var(--primary); color: var(--primary); }
         .sched-btn.enabled { background: var(--primary); border-color: var(--primary); color: white; }
@@ -1103,7 +1111,7 @@
         body.dark .sched-section { border-color: #334155; }
         body.dark .sched-header-title { color: #cbd5e1; }
         body.dark .sched-status { color: #64748b; }
-        body.dark .sched-controls select { background: #0f172a; border-color: #334155; color: #f1f5f9; }
+        body.dark .sched-field-select, body.dark .sched-field-input { background: #0f172a; border-color: #334155; color: #f1f5f9; }
         .sched-server-badge { font-size: 0.65rem; font-weight: 700; background: #7c3aed22; color: #7c3aed; border-radius: 5px; padding: 0.15rem 0.45rem; letter-spacing: 0.03em; }
         body.dark .sched-server-badge { background: #7c3aed33; color: #a78bfa; }
         .sched-discord-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
@@ -1412,12 +1420,47 @@
             </div>
             <div class="sched-status" id="schedStatus">Not scheduled. Runs on server — works even when browser is closed.</div>
             <div class="sched-controls" id="schedControls" style="display:none">
-                <select id="schedInterval">
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                </select>
-                <button class="sched-btn" onclick="saveSchedule()">💾 Save</button>
-                <button class="sched-btn danger" onclick="clearSchedule()">Remove</button>
+                <div class="sched-copy-row">
+                    <button class="sched-copy-btn" onclick="copyCurrentFilters()">📋 Use Current Search Filters</button>
+                    <span class="sched-copy-hint">or edit manually below</span>
+                </div>
+                <div class="sched-field-grid">
+                    <div style="grid-column:1/-1">
+                        <label class="sched-field-label">Career Field</label>
+                        <select id="schedCareerField" class="sched-field-select"></select>
+                    </div>
+                    <div style="grid-column:1/-1">
+                        <label class="sched-field-label">Keywords</label>
+                        <input type="text" id="schedKeywords" class="sched-field-input" placeholder="e.g. Python, Nurse, Accountant...">
+                    </div>
+                    <div>
+                        <label class="sched-field-label">Location</label>
+                        <select id="schedLocation" class="sched-field-select">
+                            <option value="both">Both (MKE + Remote)</option>
+                            <option value="milwaukee">Milwaukee</option>
+                            <option value="remote">Remote Only</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="sched-field-label">Date Posted</label>
+                        <select id="schedDatePosted" class="sched-field-select">
+                            <option value="week">Past Week</option>
+                            <option value="month">Past Month</option>
+                            <option value="all">Any Time</option>
+                        </select>
+                    </div>
+                    <div style="grid-column:1/-1">
+                        <label class="sched-field-label">Run Every</label>
+                        <select id="schedInterval" class="sched-field-select">
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="sched-actions">
+                    <button class="sched-btn" id="schedSaveBtn" onclick="saveSchedule()">💾 Save Schedule</button>
+                    <button class="sched-btn danger" onclick="clearSchedule()">Remove</button>
+                </div>
             </div>
             <div class="sched-discord-row" id="schedDiscordRow" style="display:none">
                 <input type="url" id="schedDiscordWebhook" placeholder="Discord webhook URL (optional)...">
@@ -1599,6 +1642,33 @@
     // ============================================================
     const SCHED_LS = 'mke_scheduled_search'; // kept for backward compat / UI cache
 
+    function populateSchedCareerField() {
+        const mainSel = document.getElementById('career_field');
+        const schedSel = document.getElementById('schedCareerField');
+        schedSel.innerHTML = mainSel.innerHTML; // clone all optgroups/options
+    }
+    populateSchedCareerField();
+
+    function copyCurrentFilters() {
+        // Career field
+        const mainVal = document.getElementById('career_field').value;
+        const schedSel = document.getElementById('schedCareerField');
+        for (const opt of schedSel.options) { if (opt.value === mainVal) { opt.selected = true; break; } }
+        // Keywords
+        document.getElementById('schedKeywords').value = document.getElementById('keywords').value;
+        // Location
+        const loc = document.querySelector('.loc-btn.active')?.dataset.value || 'both';
+        document.getElementById('schedLocation').value = loc;
+        // Date posted
+        const dp = document.getElementById('filterDatePosted')?.value || 'week';
+        document.getElementById('schedDatePosted').value = dp;
+        // Feedback
+        const btn = document.querySelector('.sched-copy-btn');
+        const orig = btn.textContent;
+        btn.textContent = '✓ Filters Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+    }
+
     async function renderSchedStatus() {
         const btn = document.getElementById('schedToggleBtn');
         const statusEl = document.getElementById('schedStatus');
@@ -1616,9 +1686,15 @@
                 discordHint.style.display = 'none';
             } else {
                 btn.textContent = 'Disable'; btn.classList.add('enabled');
-                controlsEl.style.display = 'flex';
+                controlsEl.style.display = 'block';
                 discordRow.style.display = 'flex';
+                // Populate editable fields from saved config
                 document.getElementById('schedInterval').value = sched.interval || 'daily';
+                const schedSel = document.getElementById('schedCareerField');
+                for (const opt of schedSel.options) { if (opt.value === (sched.career_field || '')) { opt.selected = true; break; } }
+                document.getElementById('schedKeywords').value = sched.keywords || '';
+                document.getElementById('schedLocation').value = sched.location_pref || 'both';
+                document.getElementById('schedDatePosted').value = sched.date_posted || 'week';
                 if (sched.discord_webhook) {
                     document.getElementById('schedDiscordWebhook').value = sched.discord_webhook;
                     discordHint.style.display = 'block';
@@ -1643,9 +1719,9 @@
             await fetch('/api/schedule', { method: 'DELETE' });
             await renderSchedStatus();
         } else {
-            document.getElementById('schedControls').style.display = 'flex';
+            document.getElementById('schedControls').style.display = 'block';
             document.getElementById('schedDiscordRow').style.display = 'flex';
-            document.getElementById('schedStatus').textContent = 'Choose interval and click Save.';
+            document.getElementById('schedStatus').textContent = 'Set your search filters and click Save Schedule.';
         }
     }
 
@@ -1654,10 +1730,10 @@
         const body = {
             enabled:         true,
             interval:        document.getElementById('schedInterval').value,
-            career_field:    document.getElementById('career_field').value,
-            keywords:        document.getElementById('keywords').value,
-            location_pref:   document.querySelector('.loc-btn.active')?.dataset.value || 'both',
-            date_posted:     document.getElementById('filterDatePosted')?.value || 'week',
+            career_field:    document.getElementById('schedCareerField').value,
+            keywords:        document.getElementById('schedKeywords').value.trim(),
+            location_pref:   document.getElementById('schedLocation').value,
+            date_posted:     document.getElementById('schedDatePosted').value,
             discord_webhook: document.getElementById('schedDiscordWebhook').value.trim(),
             anthropic_key:   apiKeys.anthropic || '',
             jsearch_key:     apiKeys.jsearch   || '',
@@ -1669,7 +1745,7 @@
         });
         const result = await resp.json();
         if (result.success) {
-            const saveBtn = document.querySelector('.sched-btn:not(.danger):not(#schedToggleBtn)');
+            const saveBtn = document.getElementById('schedSaveBtn');
             if (saveBtn) { const orig = saveBtn.textContent; saveBtn.textContent = '✓ Saved!'; setTimeout(() => { saveBtn.textContent = orig; }, 1500); }
         }
         await renderSchedStatus();
