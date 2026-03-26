@@ -26,20 +26,6 @@ def call_ai(prompt, provider="openai"):
         resp = model.generate_content(prompt)
         return resp.text or ""
 
-    elif provider == "groq":
-        from openai import OpenAI
-        groq = OpenAI(
-            api_key=os.environ.get("GROQ_API_KEY"),
-            base_url="https://api.groq.com/openai/v1"
-        )
-        resp = groq.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=8000,
-            temperature=0.3
-        )
-        return resp.choices[0].message.content or ""
-
     else:  # openai (default)
         from openai import OpenAI
         oai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
