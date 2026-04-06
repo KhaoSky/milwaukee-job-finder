@@ -4,18 +4,10 @@ echo   Milwaukee AI Job Finder - Starting Up
 echo ========================================
 echo.
 
-REM Check if .env exists
-if not exist .env (
-    echo ERROR: .env file not found!
-    echo Please copy .env.example to .env and add your ANTHROPIC_API_KEY
-    pause
-    exit /b 1
-)
-
-REM Load .env
-for /f "tokens=1,2 delims==" %%a in (.env) do (
-    if not "%%a"=="" if not "%%b"=="" (
-        set %%a=%%b
+REM Load API_key.env if present (optional — keys can also be entered in the app Settings panel)
+if exist API_key.env (
+    for /f "tokens=1,2 delims==" %%a in (API_key.env) do (
+        if not "%%a"=="" if not "%%b"=="" set %%a=%%b
     )
 )
 
