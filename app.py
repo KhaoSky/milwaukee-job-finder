@@ -668,11 +668,20 @@ def _start_scheduler(config):
             print(f"[scheduler] Scheduled: {config.get('interval','daily')}")
 
 
-# Restore schedule on startup
+# Restore schedule on startup — also fire immediately if overdue
+def _startup_search_check():
+    """Run after a short delay so Flask is fully up; fires if search is overdue."""
+    import time
+    time.sleep(6)
+    run_server_scheduled_search()
+
 with app.app_context():
     _cfg = _load_schedule_config()
     if _cfg and _cfg.get("enabled"):
         _start_scheduler(_cfg)
+        # Trigger an immediate overdue check (run_server_scheduled_search guards
+        # against running too early via its elapsed-time check)
+        threading.Thread(target=_startup_search_check, daemon=True).start()
 
 
 # ============================================================
