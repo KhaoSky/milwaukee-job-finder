@@ -30,7 +30,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 def call_ai(prompt, provider="claude", api_key=None):
     """Call Claude AI and return the response text."""
     import anthropic
-    key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+    key = api_key or os.environ.get("ANTHROPIC_API_KEY") or _load_saved_keys().get("anthropic")
     client = anthropic.Anthropic(api_key=key)
     resp = client.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -44,7 +44,7 @@ def call_ai(prompt, provider="claude", api_key=None):
 # ============================================================
 def fetch_real_jobs(query, location=None, is_remote=False, num_pages=2, date_posted="month", api_key=None):
     """Fetch real job listings from JSearch API via RapidAPI."""
-    key = api_key or os.environ.get("JSEARCH_API_KEY")
+    key = api_key or os.environ.get("JSEARCH_API_KEY") or _load_saved_keys().get("jsearch")
     if not key:
         raise ValueError(
             "JSEARCH_API_KEY not configured. "
@@ -479,12 +479,26 @@ Return ONLY valid JSON, no other text."""
 # SERVER-SIDE SCHEDULER + DISCORD NOTIFICATIONS
 # ============================================================
 os.makedirs(_DATA_DIR, exist_ok=True)
+KEYS_FILE        = os.path.join(_DATA_DIR, "keys_config.json")
 SCHEDULE_FILE    = os.path.join(_DATA_DIR, "schedule_config.json")
 LAST_JOBS_FILE   = os.path.join(_DATA_DIR, "last_jobs_cache.json")
 RESUME_CACHE_FILE = os.path.join(_DATA_DIR, "resume_cache.json")
 
 _scheduler_lock = threading.Lock()
 _scheduler = None
+
+
+def _load_saved_keys():
+    try:
+        with open(KEYS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_keys_to_disk(data):
+    with open(KEYS_FILE, "w") as f:
+        json.dump(data, f)
 
 
 def _load_schedule_config():
@@ -753,6 +767,39 @@ def test_discord():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# API KEY STORAGE ROUTES
+# ============================================================
+@app.route("/api/keys", methods=["GET"])
+def get_keys():
+    keys = _load_saved_keys()
+    return jsonify({
+        "anthropic": keys.get("anthropic", ""),
+        "jsearch":   keys.get("jsearch", ""),
+    })
+
+
+@app.route("/api/keys", methods=["POST"])
+def save_keys():
+    data = request.json or {}
+    existing = _load_saved_keys()
+    updated = {
+        "anthropic": data.get("anthropic") or existing.get("anthropic", ""),
+        "jsearch":   data.get("jsearch")   or existing.get("jsearch", ""),
+    }
+    _save_keys_to_disk(updated)
+    return jsonify({"success": True})
+
+
+@app.route("/api/keys", methods=["DELETE"])
+def delete_keys():
+    try:
+        os.remove(KEYS_FILE)
+    except Exception:
+        pass
+    return jsonify({"success": True})
 
 
 # ============================================================

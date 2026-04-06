@@ -1627,21 +1627,27 @@
     function getApiKeys() {
         try { return JSON.parse(localStorage.getItem(API_KEYS_LS) || '{}'); } catch { return {}; }
     }
-    function saveApiKeys() {
+    async function saveApiKeys() {
         const keys = {
             anthropic: document.getElementById('settingsAnthropicKey').value.trim(),
             jsearch:   document.getElementById('settingsJsearchKey').value.trim()
         };
         localStorage.setItem(API_KEYS_LS, JSON.stringify(keys));
+        await fetch('/api/keys', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(keys)
+        });
         const btn = document.querySelector('.settings-save-btn');
         const orig = btn.textContent;
         btn.textContent = '✓ Saved!';
         setTimeout(() => { btn.textContent = orig; }, 1500);
     }
-    function clearApiKeys() {
+    async function clearApiKeys() {
         localStorage.removeItem(API_KEYS_LS);
         document.getElementById('settingsAnthropicKey').value = '';
         document.getElementById('settingsJsearchKey').value = '';
+        await fetch('/api/keys', { method: 'DELETE' });
     }
     function toggleKeyVisibility() {
         ['settingsAnthropicKey','settingsJsearchKey'].forEach(id => {
@@ -1649,11 +1655,28 @@
             el.type = el.type === 'password' ? 'text' : 'password';
         });
     }
-    // Restore saved keys into the inputs on load
-    (function() {
-        const k = getApiKeys();
-        if (k.anthropic) document.getElementById('settingsAnthropicKey').value = k.anthropic;
-        if (k.jsearch)   document.getElementById('settingsJsearchKey').value   = k.jsearch;
+    // Restore saved keys — fetch from server (persistent), fall back to localStorage
+    (async function() {
+        try {
+            const r = await fetch('/api/keys');
+            const serverKeys = await r.json();
+            const localKeys = getApiKeys();
+            const keys = {
+                anthropic: serverKeys.anthropic || localKeys.anthropic || '',
+                jsearch:   serverKeys.jsearch   || localKeys.jsearch   || '',
+            };
+            // Keep server and localStorage in sync
+            if (keys.anthropic || keys.jsearch) {
+                localStorage.setItem(API_KEYS_LS, JSON.stringify(keys));
+            }
+            if (keys.anthropic) document.getElementById('settingsAnthropicKey').value = keys.anthropic;
+            if (keys.jsearch)   document.getElementById('settingsJsearchKey').value   = keys.jsearch;
+        } catch {
+            // Server not ready yet — fall back to localStorage only
+            const k = getApiKeys();
+            if (k.anthropic) document.getElementById('settingsAnthropicKey').value = k.anthropic;
+            if (k.jsearch)   document.getElementById('settingsJsearchKey').value   = k.jsearch;
+        }
     })();
     document.getElementById('settingsToggleBtn').addEventListener('click', () => {
         const p = document.getElementById('apiSettingsPanel');
