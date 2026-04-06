@@ -546,13 +546,20 @@ def _save_resume_cache(text, filename=""):
         }, f)
 
 
-def send_discord_notification(webhook_url, new_jobs, search_summary):
+def send_discord_notification(webhook_url, new_jobs, search_summary, total_found=None):
     """Send Discord embed notification for new job matches."""
     url = webhook_url or os.environ.get("DISCORD_WEBHOOK", "")
     if not url or not new_jobs:
         return
+
+    # Discord allows max 10 embeds per message
+    DISCORD_EMBED_LIMIT = 10
+    shown_jobs = new_jobs[:DISCORD_EMBED_LIMIT]
+    total = total_found if total_found is not None else len(new_jobs)
+    shown = len(shown_jobs)
+
     embeds = []
-    for job in new_jobs[:5]:
+    for job in shown_jobs:
         loc = job.get("location") or ("Remote" if job.get("is_remote") else "N/A")
         salary = job.get("salary") or "Not listed"
         score = job.get("match_score", "?")
@@ -571,11 +578,17 @@ def send_discord_notification(webhook_url, new_jobs, search_summary):
             "footer": {"text": job.get("source", "")},
         })
 
-    content = (
-        f"🎯 **{len(new_jobs)} new job match{'es' if len(new_jobs) != 1 else ''} found!**"
-        f"  Search: _{search_summary}_"
-    )
-    payload = {"content": content, "embeds": embeds[:10]}
+    if total > shown:
+        content = (
+            f"🎯 **{total} new job{'s' if total != 1 else ''} found** — "
+            f"showing top {shown}  ·  _{search_summary}_"
+        )
+    else:
+        content = (
+            f"🎯 **{total} new job{'s' if total != 1 else ''} found**  ·  _{search_summary}_"
+        )
+
+    payload = {"content": content, "embeds": embeds}
     try:
         r = requests.post(url, json=payload, timeout=10)
         r.raise_for_status()
@@ -641,7 +654,7 @@ def run_server_scheduled_search():
             webhook = config.get("discord_webhook") or os.environ.get("DISCORD_WEBHOOK", "")
             if webhook and new_jobs:
                 summary = (config.get("career_field", "") + " " + config.get("keywords", "")).strip() or "All fields"
-                send_discord_notification(webhook, new_jobs, summary)
+                send_discord_notification(webhook, new_jobs, summary, total_found=len(new_jobs))
             print(f"[scheduler] Done — {len(ranked)} jobs, {len(new_jobs)} new, Discord: {bool(webhook and new_jobs)}")
 
         config["last_run_at"] = datetime.now(timezone.utc).isoformat()
